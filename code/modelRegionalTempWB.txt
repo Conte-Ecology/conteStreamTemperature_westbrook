@@ -1,0 +1,43 @@
+
+      model{
+      # Likelihood
+      for(i in 1:n){ # n observations
+      temp[i] ~ dnorm(stream.mu[i], tau)
+      stream.mu[i] <- inprod(B.0[], X.0[i, ]) + inprod(B.year[year[i], ], X.year[i, ]) #  
+      }
+      
+      # prior for model variance
+      sigma ~ dunif(0, 100)
+      tau <- pow(sigma, -2)
+      
+      for(k in 1:K.0){
+      B.0[k] ~ dnorm(0, 0.001) # priors coefs for fixed effect predictors
+      }
+      
+      # YEAR EFFECTS
+      # Priors for random effects of year
+      for(t in 1:Ti){ # Ti years
+      B.year[t, 1:L] ~ dmnorm(mu.year[ ], tau.B.year[ , ])
+      }
+      mu.year[1] <- 0
+      for(l in 2:L){
+      mu.year[l] ~ dnorm(0, 0.0001)
+      }
+      
+      # Prior on multivariate normal std deviation
+      tau.B.year[1:L, 1:L] ~ dwish(W.year[ , ], df.year)
+      df.year <- L + 1
+      sigma.B.year[1:L, 1:L] <- inverse(tau.B.year[ , ])
+      for(l in 1:L){
+      for(l.prime in 1:L){
+      rho.B.year[l, l.prime] <- sigma.B.year[l, l.prime]/sqrt(sigma.B.year[l, l]*sigma.B.year[l.prime, l.prime])
+      }
+      sigma.b.year[l] <- sqrt(sigma.B.year[l, l])
+      }
+      
+      # Derived parameters
+      for(i in 1:n) {
+      residuals[i] <- temp[i] - stream.mu[i]
+      }
+      }
+      

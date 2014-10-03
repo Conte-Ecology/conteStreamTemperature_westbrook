@@ -1,0 +1,121 @@
+---
+title: "run JAGS"
+author: "Daniel Hocking"
+date: "October 3, 2014"
+output: html_document
+---
+
+```{r results = 'hide', warning=FALSE, message=FALSE}
+library(knitr)
+library(ggplot2)
+library(ggmcmc)
+library(dplyr)
+library(nlme)
+library(devtools)
+install_github("Conte-Ecology/conteStreamTemperature")
+library(conteStreamTemperature)
+
+baseDir <- getwd() # works as long as you have the project loaded in RStudio - does not work for kniting
+
+dataInDir <- paste0(baseDir, '/dataIn/')
+dataOutDir <- paste0(baseDir, '/dataOut/')
+dataLocalDir <- paste0(baseDir, '/localData/')
+graphsDir <- paste0(baseDir, '/graphs/')
+
+# load standardized and formatted data created with the 3-statModelPrep.Rmd script
+load(paste0(dataOutDir, 'tempDataSync.RData'))
+```
+
+```{r run JAGS model}
+
+data.fixed <- data.frame(intercept = 1,
+                         airTemp = tempDataSyncS$airTemp, 
+                         #airTempLag1 = tempDataSyncS$airTempLagged1,
+                         airTempLag2 = tempDataSyncS$airTempLagged2,
+                         precip = tempDataSyncS$prcp,
+                         precipLag1 = tempDataSyncS$prcpLagged1,
+                         precipLag2 = tempDataSyncS$prcpLagged2,
+                         #site = tempDataSyncS$site, # might have to dummy code by hand, I haven't used a categorical variable as a fixed effect in a while
+                         air.precip = tempDataSyncS$airTemp * tempDataSyncS$prcp)
+
+data.random.years <- data.frame(intercept.year = 1, 
+                     dOY = tempDataSyncS$dOY, 
+                     dOY2 = tempDataSyncS$dOY^2,
+                     dOY3 = tempDataSyncS$dOY^3)
+
+monitor.params <- c("residuals",
+            #"deviance",
+            "sigma",
+            "B.0",
+            #"B.year",
+            #"rho.B.year",
+            "mu.year",
+            "sigma.b.year")
+
+coda.tf <- T # currently only works in full for TRUE (using coda.samples)
+system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 1000, n.it = 1000, n.thin = 1, nc = 3, coda = coda.tf, param.list = monitor.params))
+
+save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
+
+```
+
+## Evaluate MCMC Iterations
+```{r check model convergence and mixing}
+ggs.wb <- ggs(M.wb)
+ggmcmc(ggs.wb, file = "ggmcmc-wb.pdf", family = "B.0", plot = c("ggs_density",  "ggs_traceplot", "ggs_running", "ggs_compare_partial", "ggs_autocorrelation", "ggs_crosscorrelation", "ggs_Rhat", "ggs_geweke", "ggs_caterpillar"))
+dev.off()
+
+ggs_traceplot(ggs.wb, family = "B.0")
+
+huc.mat <- as.matrix(M.wb)
+tempDataSyncS$resid.wb <- NA
+for(i in 1:length(tempDataSyncS$temp)) {
+  tempDataSyncS$resid.wb[i] <- mean(huc.mat[ , paste0("residuals[", i, "]")])
+  #  tempDataSyncS$resid.wb[i] <- huc.mat[1 , paste0("residuals[", i, "]")]
+  }
+```
+
+## Check model fit
+```{r check model fit}
+#------ Check residual patterns------
+# Observed vs Residuals
+g <- ggplot(tempDataSyncS, aes(temp, resid.wb)) 
+g + geom_point(alpha = 0.3) + geom_smooth() + theme_bw()
+
+library(hexbin)
+g + stat_binhex(bins = 100) + geom_smooth() + theme_bw()
+
+g + geom_point() + geom_density2d()
+
+# Residuals by random year
+b <- ggplot(tempDataSyncS, aes(x = year, y = resid.wb))
+b + geom_boxplot() + coord_flip()
+
+# Residuals by covariates
+ggplot(tempDataSyncS, aes(airTemp, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()
+
+ggplot(tempDataSyncS, aes(dOY, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()
+
+ggplot(tempDataSyncS, aes(dOY^2, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()
+
+# Check Autocorrelation of residuals
+# correlation in MCMC
+acf(huc.mat[ , "residuals[1]"], lag.max = 40, xlab = "Lag", ylab = "Correlation", main = "")
+acf(huc.mat[ , "residuals[2]"], lag.max = 40, xlab = "Lag", ylab = "Correlation", main = "")
+
+# correlation in residuals over time 
+acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", main = "")
+
+# for HUC8s
+for(i in 1:length(unique(tempDataSyncS$HUC8))) {
+  
+  acf(tempDataSyncS$resid.wb, lag.max = 40, xlab = "Lag", ylab = "Correlation", main = "")
+
+```
+
+```{r ending info}
+
+print(sessionInfo())
+
+```
+
