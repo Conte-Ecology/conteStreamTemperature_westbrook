@@ -66,6 +66,7 @@ ggmcmc(ggs.wb, file = "ggmcmc-wb.pdf", family = "B.0", plot = c("ggs_density",  
 dev.off()
 
 ggs_traceplot(ggs.wb, family = "B.0")
+ggs_density(ggs.wb, family = "B.0")
 
 huc.mat <- as.matrix(M.wb)
 tempDataSyncS$resid.wb <- NA
@@ -98,18 +99,12 @@ ggplot(tempDataSyncS, aes(dOY, resid.wb)) + geom_point(alpha = 0.5) + geom_smoot
 
 ggplot(tempDataSyncS, aes(dOY^2, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()
 
-# Check Autocorrelation of residuals
-# correlation in MCMC
+# correlation in MCMC for residuals
 acf(huc.mat[ , "residuals[1]"], lag.max = 40, xlab = "Lag", ylab = "Correlation", main = "")
 acf(huc.mat[ , "residuals[2]"], lag.max = 40, xlab = "Lag", ylab = "Correlation", main = "")
 
 # correlation in residuals over time 
-acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", main = "")
-
-# for HUC8s
-for(i in 1:length(unique(tempDataSyncS$HUC8))) {
-  
-  acf(tempDataSyncS$resid.wb, lag.max = 40, xlab = "Lag", ylab = "Correlation", main = "")
+acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", main = "") # huge autocorrelation in the residuals!!!! Adding site might help this to some extent.
 
 ```
 
