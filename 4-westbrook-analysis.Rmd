@@ -75,6 +75,9 @@ ggs.wb <- ggs(M.wb)
 ggmcmc(ggs.wb, file = "ggmcmc-wb.pdf", family = "B.0", plot = c("ggs_density",  "ggs_traceplot", "ggs_running", "ggs_compare_partial", "ggs_autocorrelation", "ggs_crosscorrelation", "ggs_Rhat", "ggs_geweke", "ggs_caterpillar"))
 dev.off()
 
+ggmcmc(ggs.wb, file = "ggmcmc-wb.pdf", family = "B.year", plot = c("ggs_density",  "ggs_traceplot", "ggs_running", "ggs_compare_partial", "ggs_autocorrelation", "ggs_crosscorrelation", "ggs_Rhat", "ggs_geweke", "ggs_caterpillar"))
+dev.off()
+
 ggs_traceplot(ggs.wb, family = "B.0")
 
 
@@ -82,6 +85,7 @@ ggs_density(ggs.wb, family="B.year")
 
 
 ggs_density(ggs.wb, family = "B.0")
+ggs_traceplot(ggs.wb, family = "B.year")
 
 huc.mat <- as.matrix(M.wb)
 tempDataSyncS$resid.wb <- NA
