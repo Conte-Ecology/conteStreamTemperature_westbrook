@@ -49,8 +49,8 @@ group_by(site) %>%
   mutate( flowS = ( flow - mean(flow,na.rm = TRUE) ) / sd(flow,na.rm = TRUE) )
 
 # there are 10 flows with NA., set to 0
+#tempDataSyncS$flowS[is.na(tempDataSyncS$flowS)] <- 0
 tempDataSyncS$flowS[is.na(tempDataSyncS$flowS)] <- 0
-tempDataSyncS$flowSSite[is.na(tempDataSyncS$flowSSite)] <- 0
 ```
 
 ```{r dummy site variable}
@@ -75,7 +75,7 @@ tempDataSyncS$site6 <- ifelse( tempDataSyncS$site=='MAUSGS_WEST_BROOK',1,0 )
 ggplot(tempDataSyncS,aes(date,temp))+
   geom_point()+
   geom_point(aes(date,airTemp))+
-  geom_point(aes(date,flowSSite),color='red')+
+  geom_point(aes(date,flowS),color='red')+
   facet_wrap(~site)
 
 
@@ -100,35 +100,42 @@ ggplot(tempDataSyncS,aes(date,temp))+
 #                          site1Flow = tempDataSyncS$site1 * tempDataSyncS$flowS,
 #                          site2Flow = tempDataSyncS$site2 * tempDataSyncS$flowS,
 #                          site3Flow = tempDataSyncS$site3 * tempDataSyncS$flowS,
-#                          airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowS,
 #                          air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS)
 
 # try moving mean air T?
 data.fixed <- data.frame(intercept = 1,
                          airTemp = tempDataSyncS$airTemp, 
-                         airTempLag1 = tempDataSyncS$airTempLagged1,
+                         #airTempLag1 = tempDataSyncS$airTempLagged1,
                          airTempLag2 = tempDataSyncS$airTempLagged2,
+                         
                          flow = tempDataSyncS$flowS,
+                         
+                         #main site effects
                          site1 = tempDataSyncS$site1,
                          site2 = tempDataSyncS$site2,
                          site3 = tempDataSyncS$site3,
                          site4 = tempDataSyncS$site4,
                          site5 = tempDataSyncS$site5,
                          site6 = tempDataSyncS$site6,
+                         
+                         #site interaction with air temp
                          site1Air = tempDataSyncS$site1 * tempDataSyncS$airTemp,
                          site2Air = tempDataSyncS$site2 * tempDataSyncS$airTemp,
                          site3Air = tempDataSyncS$site3 * tempDataSyncS$airTemp,
                          site4Air = tempDataSyncS$site4 * tempDataSyncS$airTemp,
                          site5Air = tempDataSyncS$site5 * tempDataSyncS$airTemp,
                          site6Air = tempDataSyncS$site6 * tempDataSyncS$airTemp,
+                         
                          airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowS,
+                         
+                         # site interaction with flow
                          site1Flow = tempDataSyncS$site1 * tempDataSyncS$flowS,
                          site2Flow = tempDataSyncS$site2 * tempDataSyncS$flowS,
                          site3Flow = tempDataSyncS$site3 * tempDataSyncS$flowS,
                          site4Flow = tempDataSyncS$site4 * tempDataSyncS$flowS,
                          site5Flow = tempDataSyncS$site5 * tempDataSyncS$flowS,
                          site6Flow = tempDataSyncS$site6 * tempDataSyncS$flowS,
-                         airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowS,
+                         
                          air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS)
 
 data.random.years <- data.frame(intercept.year = 1, 
@@ -145,7 +152,8 @@ monitor.params <- c("residuals",
             #"rho.B.year",
             "mu.year",
             "sigma.b.year",
-            "stream.mu")
+            "stream.mu",
+            "ar1")
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
 system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 1000, n.it = 1000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
