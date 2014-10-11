@@ -41,8 +41,7 @@ tempDataSyncS <- merge(x=tempDataSyncS, y=et[,c('riverOrdered','flow','dateDate'
                        by.y=c('riverOrdered','dateDate'),
                        all.x=T)
 
-# standardize flow by river
-#### should std by site, not river
+# standardize flow by site
 tempDataSyncS <- 
 tempDataSyncS %>%
 group_by(site) %>%
@@ -82,61 +81,54 @@ ggplot(tempDataSyncS,aes(date,temp))+
 
 ```
 
+```{r subset data}
+
+tempDataSyncS <- filter(tempDataSyncS, site == 'MAUSGS_WB_MITCHELL' )#'MAUSGS_WEST_BROOK')
+
+```
+
 
 ```{r run JAGS model}
 
-# data.fixed <- data.frame(intercept = 1,
-#                          airTemp = tempDataSyncS$airTemp, 
-#                          #airTempLag1 = tempDataSyncS$airTempLagged1,
-#                          airTempLag2 = tempDataSyncS$airTempLagged2,
-#                          flow = tempDataSyncS$flowS,
-#                          site1 = tempDataSyncS$site1,
-#                          site2 = tempDataSyncS$site2,
-#                          site3 = tempDataSyncS$site3,
-#                          site1Air = tempDataSyncS$site1 * tempDataSyncS$airTemp,
-#                          site2Air = tempDataSyncS$site2 * tempDataSyncS$airTemp,
-#                          site3Air = tempDataSyncS$site3 * tempDataSyncS$airTemp,
-#                          airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowS,
-#                          site1Flow = tempDataSyncS$site1 * tempDataSyncS$flowS,
-#                          site2Flow = tempDataSyncS$site2 * tempDataSyncS$flowS,
-#                          site3Flow = tempDataSyncS$site3 * tempDataSyncS$flowS,
-#                          air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS)
-
 # try moving mean air T?
 data.fixed <- data.frame(intercept = 1,
-                         airTemp = tempDataSyncS$airTemp, 
-                         #airTempLag1 = tempDataSyncS$airTempLagged1,
-                         airTempLag2 = tempDataSyncS$airTempLagged2,
+                          airTemp = tempDataSyncS$airTemp 
+                         ,airTempLag1 = tempDataSyncS$airTempLagged1
+                         ,airTempLag2 = tempDataSyncS$airTempLagged2
                          
-                         flow = tempDataSyncS$flowS,
+                         ,flow = tempDataSyncS$flowS
+                         
+                         ,airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowS
+                         ,air1Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS
+                         ,air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS
                          
                          #main site effects
-                         site1 = tempDataSyncS$site1,
-                         site2 = tempDataSyncS$site2,
-                         site3 = tempDataSyncS$site3,
-                         site4 = tempDataSyncS$site4,
-                         site5 = tempDataSyncS$site5,
-                         site6 = tempDataSyncS$site6,
-                         
-                         #site interaction with air temp
-                         site1Air = tempDataSyncS$site1 * tempDataSyncS$airTemp,
-                         site2Air = tempDataSyncS$site2 * tempDataSyncS$airTemp,
-                         site3Air = tempDataSyncS$site3 * tempDataSyncS$airTemp,
-                         site4Air = tempDataSyncS$site4 * tempDataSyncS$airTemp,
-                         site5Air = tempDataSyncS$site5 * tempDataSyncS$airTemp,
-                         site6Air = tempDataSyncS$site6 * tempDataSyncS$airTemp,
-                         
-                         airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowS,
-                         
-                         # site interaction with flow
-                         site1Flow = tempDataSyncS$site1 * tempDataSyncS$flowS,
-                         site2Flow = tempDataSyncS$site2 * tempDataSyncS$flowS,
-                         site3Flow = tempDataSyncS$site3 * tempDataSyncS$flowS,
-                         site4Flow = tempDataSyncS$site4 * tempDataSyncS$flowS,
-                         site5Flow = tempDataSyncS$site5 * tempDataSyncS$flowS,
-                         site6Flow = tempDataSyncS$site6 * tempDataSyncS$flowS,
-                         
-                         air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS)
+#                          ,site1 = tempDataSyncS$site1
+#                          ,site2 = tempDataSyncS$site2
+#                          ,site3 = tempDataSyncS$site3
+#                          ,site4 = tempDataSyncS$site4
+#                          ,site5 = tempDataSyncS$site5
+#                          ,site6 = tempDataSyncS$site6
+#                          
+#                          #site interaction with air temp
+#                          ,site1Air = tempDataSyncS$site1 * tempDataSyncS$airTemp
+#                          ,site2Air = tempDataSyncS$site2 * tempDataSyncS$airTemp
+#                          ,site3Air = tempDataSyncS$site3 * tempDataSyncS$airTemp
+#                          ,site4Air = tempDataSyncS$site4 * tempDataSyncS$airTemp
+#                          ,site5Air = tempDataSyncS$site5 * tempDataSyncS$airTemp
+#                          ,site6Air = tempDataSyncS$site6 * tempDataSyncS$airTemp
+#                          
+#                          
+#                          # site interaction with flow
+#                          ,site1Flow = tempDataSyncS$site1 * tempDataSyncS$flowS
+#                          ,site2Flow = tempDataSyncS$site2 * tempDataSyncS$flowS
+#                          ,site3Flow = tempDataSyncS$site3 * tempDataSyncS$flowS
+#                          ,site4Flow = tempDataSyncS$site4 * tempDataSyncS$flowS
+#                          ,site5Flow = tempDataSyncS$site5 * tempDataSyncS$flowS
+#                          ,site6Flow = tempDataSyncS$site6 * tempDataSyncS$flowS
+#                          
+#                          
+                          )
 
 data.random.years <- data.frame(intercept.year = 1, 
                      dOY = tempDataSyncS$dOY, 
@@ -173,6 +165,9 @@ for(i in 1:length(tempDataSyncS$temp)) {
   tempDataSyncS$resid.wb[i] <- mean(huc.mat[ , paste0("residuals[", i, "]")])
   tempDataSyncS$pred.wb[i] <- mean(huc.mat[ , paste0("stream.mu[", i, "]")])
 }
+(rmse <- sqrt(sum(tempDataSyncS$resid.wb^2)/length(tempDataSyncS$resid.wb)) )
+# 0.988 no Ar
+# 0.729 w ar1
 ```
 
 ## Evaluate MCMC Iterations
@@ -192,6 +187,9 @@ ggs_density(ggs.wb, family = "B.0")
 ggs_density(ggs.wb, family="B.year")
 ggs_traceplot(ggs.wb, family = "B.year")
 
+ggs_traceplot(ggs.wb, family = "ar1")
+ggs_density(ggs.wb, family="ar1")
+
 
 ```
 
@@ -210,11 +208,13 @@ ggplot(tempDataSyncS, aes(temp, pred.wb)) +
   theme_bw() +
   facet_wrap(~site)
 
-ggplot(tempDataSyncS[tempDataSyncS$year==2010 & tempDataSyncS$site == 'MAUSGS_WB_MITCHELL',], aes(dOY, pred.wb)) +
+ggplot(tempDataSyncS[tempDataSyncS$year==2010  
+                     &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
+                     ,], aes(dOY, pred.wb)) +
   geom_point() + 
   geom_point(aes(dOY,temp),color='red')+
   geom_line(aes(dOY,temp),color='red')+
-  geom_line(aes(dOY,(airTemp+3)*5),color='blue')+
+  geom_line(aes(dOY,(airTemp+4)*5),color='blue')+
   facet_wrap(site~year)
 
 
