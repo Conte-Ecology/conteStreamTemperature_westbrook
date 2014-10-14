@@ -24,44 +24,157 @@ graphsDir <- paste0(baseDir, '/graphs/')
 
 # load standardized and formatted data created with the 3-statModelPrep.Rmd script
 load(paste0(dataOutDir, 'tempDataSync.RData'))
+tempDataSyncS$river <- 'WEST BROOK'
+tempDataSyncS$river[ tempDataSyncS$site == 'MAUSGS_WB_MITCHELL' ] <- 'WB MITCHELL' 
+tempDataSyncS$river[ tempDataSyncS$site == 'MAUSGS_WB_OBEAR' ] <- 'WB OBEAR' 
+tempDataSyncS$river[ tempDataSyncS$site == 'MAUSGS_WB_JIMMY' ] <- 'WB JIMMY' 
+tempDataSyncS$riverOrdered <- factor(tempDataSyncS$river,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
+
+
+# merge in env data to get flow
+load(paste0(dataOutDir, 'etWB.RData'))
+et$dateDate <- as.Date(et$date) # to match tempDataSyncS
+et$riverOrdered <- factor(et$site,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
+
+tempDataSyncS <- merge(x=tempDataSyncS, y=et[,c('riverOrdered','flow','dateDate')], 
+                       by.x=c('riverOrdered','date'),
+                       by.y=c('riverOrdered','dateDate'),
+                       all.x=T)
+
+# standardize flow by site
+tempDataSyncS <- 
+tempDataSyncS %>%
+group_by(site) %>%
+  mutate( flowS = ( flow - mean(flow,na.rm = TRUE) ) / sd(flow,na.rm = TRUE) )
+
+# there are 10 flows with NA., set to 0
+#tempDataSyncS$flowS[is.na(tempDataSyncS$flowS)] <- 0
+tempDataSyncS$flowS[is.na(tempDataSyncS$flowS)] <- 0
 ```
+
+```{r dummy site variable}
+
+tempDataSyncS$river0 <- ifelse( tempDataSyncS$riverOrdered=='WEST BROOK',1,0 ) # not really needed
+tempDataSyncS$river1 <- ifelse( tempDataSyncS$riverOrdered=='WB JIMMY',1,0 )
+tempDataSyncS$river2 <- ifelse( tempDataSyncS$riverOrdered=='WB MITCHELL',1,0 )
+tempDataSyncS$river3 <- ifelse( tempDataSyncS$riverOrdered=='WB OBEAR',1,0 )
+
+tempDataSyncS$site0 <- ifelse( tempDataSyncS$site=='MAUSGS_SEC30_DL',1,0 ) # not really needed
+tempDataSyncS$site1 <- ifelse( tempDataSyncS$site=='MAUSGS_SEC45_DL',1,0 )
+tempDataSyncS$site2 <- ifelse( tempDataSyncS$site=='MAUSGS_SEC6_DL',1,0 )
+tempDataSyncS$site3 <- ifelse( tempDataSyncS$site=='MAUSGS_WB_JIMMY',1,0 )
+tempDataSyncS$site4 <- ifelse( tempDataSyncS$site=='MAUSGS_WB_MITCHELL',1,0 )
+tempDataSyncS$site5 <- ifelse( tempDataSyncS$site=='MAUSGS_WB_OBEAR',1,0 )
+tempDataSyncS$site6 <- ifelse( tempDataSyncS$site=='MAUSGS_WEST_BROOK',1,0 )
+
+```
+
+```{r raw data graphs}
+
+ggplot(tempDataSyncS,aes(date,temp))+
+  geom_point()+
+  geom_point(aes(date,airTemp))+
+  geom_point(aes(date,flowS),color='red')+
+  facet_wrap(~site)
+
+
+
+```
+
+```{r subset data}
+
+tempDataSyncS <- filter(tempDataSyncS, site == 'MAUSGS_WB_MITCHELL' )#'MAUSGS_WEST_BROOK')
+
+```
+
 
 ```{r run JAGS model}
 
+# try moving mean air T?
 data.fixed <- data.frame(intercept = 1,
-                         airTemp = tempDataSyncS$airTemp, 
-                         #airTempLag1 = tempDataSyncS$airTempLagged1,
-                         airTempLag2 = tempDataSyncS$airTempLagged2,
-                         precip = tempDataSyncS$prcp,
-                         precipLag1 = tempDataSyncS$prcpLagged1,
-                         precipLag2 = tempDataSyncS$prcpLagged2,
-                         #site = tempDataSyncS$site, # might have to dummy code by hand, I haven't used a categorical variable as a fixed effect in a while
-                         air.precip = tempDataSyncS$airTemp * tempDataSyncS$prcp)
+                          airTemp = tempDataSyncS$airTemp 
+                         ,airTempLag1 = tempDataSyncS$airTempLagged1
+                         ,airTempLag2 = tempDataSyncS$airTempLagged2
+                         
+                         ,flow = tempDataSyncS$flowS
+                         
+                         ,airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowS
+                         ,air1Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS
+                         ,air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS
+                         
+                         #main site effects
+#                          ,site1 = tempDataSyncS$site1
+#                          ,site2 = tempDataSyncS$site2
+#                          ,site3 = tempDataSyncS$site3
+#                          ,site4 = tempDataSyncS$site4
+#                          ,site5 = tempDataSyncS$site5
+#                          ,site6 = tempDataSyncS$site6
+#                          
+#                          #site interaction with air temp
+#                          ,site1Air = tempDataSyncS$site1 * tempDataSyncS$airTemp
+#                          ,site2Air = tempDataSyncS$site2 * tempDataSyncS$airTemp
+#                          ,site3Air = tempDataSyncS$site3 * tempDataSyncS$airTemp
+#                          ,site4Air = tempDataSyncS$site4 * tempDataSyncS$airTemp
+#                          ,site5Air = tempDataSyncS$site5 * tempDataSyncS$airTemp
+#                          ,site6Air = tempDataSyncS$site6 * tempDataSyncS$airTemp
+#                          
+#                          
+#                          # site interaction with flow
+#                          ,site1Flow = tempDataSyncS$site1 * tempDataSyncS$flowS
+#                          ,site2Flow = tempDataSyncS$site2 * tempDataSyncS$flowS
+#                          ,site3Flow = tempDataSyncS$site3 * tempDataSyncS$flowS
+#                          ,site4Flow = tempDataSyncS$site4 * tempDataSyncS$flowS
+#                          ,site5Flow = tempDataSyncS$site5 * tempDataSyncS$flowS
+#                          ,site6Flow = tempDataSyncS$site6 * tempDataSyncS$flowS
+#                          
+#                          
+                          )
 
 data.random.years <- data.frame(intercept.year = 1, 
                      dOY = tempDataSyncS$dOY, 
                      dOY2 = tempDataSyncS$dOY^2,
-                     dOY3 = tempDataSyncS$dOY^3)
+                     dOY3 = tempDataSyncS$dOY^3
+                     )
 
 monitor.params <- c("residuals",
-            #"deviance",
+            "deviance",
             "sigma",
             "B.0",
             "B.year",
             #"rho.B.year",
             "mu.year",
-            "sigma.b.year")
+            "sigma.b.year",
+            "stream.mu",
+            "ar1")
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
-system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 1000, n.it = 1000, n.thin = 1, nc = 3, coda = coda.tf, param.list = monitor.params))
+system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 1000, n.it = 1000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
 
-save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
+rm(ggs.wb)
+ggs.wb <- ggs(M.wb)
+#ggs_traceplot(ggs.wb, family = "deviance")
+#ggs_traceplot(ggs.wb, family = "B.0")
+#ggs_density(ggs.wb, family = "B.0")
 
+#save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
+
+huc.mat <- as.matrix(M.wb)
+tempDataSyncS$resid.wb <- NA
+tempDataSyncS$pred.wb <- NA
+for(i in 1:length(tempDataSyncS$temp)) {
+  tempDataSyncS$resid.wb[i] <- mean(huc.mat[ , paste0("residuals[", i, "]")])
+  tempDataSyncS$pred.wb[i] <- mean(huc.mat[ , paste0("stream.mu[", i, "]")])
+}
+(rmse <- sqrt(sum(tempDataSyncS$resid.wb^2)/length(tempDataSyncS$resid.wb)) )
+# 0.988 no Ar
+# 0.729 w ar1
 ```
 
 ## Evaluate MCMC Iterations
 ```{r check model convergence and mixing}
-ggs.wb <- ggs(M.wb)
+
+
+# this saves a pdf file
 ggmcmc(ggs.wb, file = "ggmcmc-wb.pdf", family = "B.0", plot = c("ggs_density",  "ggs_traceplot", "ggs_running", "ggs_compare_partial", "ggs_autocorrelation", "ggs_crosscorrelation", "ggs_Rhat", "ggs_geweke", "ggs_caterpillar"))
 dev.off()
 
@@ -70,14 +183,14 @@ dev.off()
 
 ggs_traceplot(ggs.wb, family = "B.0")
 ggs_density(ggs.wb, family = "B.0")
+
+ggs_density(ggs.wb, family="B.year")
 ggs_traceplot(ggs.wb, family = "B.year")
 
-huc.mat <- as.matrix(M.wb)
-tempDataSyncS$resid.wb <- NA
-for(i in 1:length(tempDataSyncS$temp)) {
-  tempDataSyncS$resid.wb[i] <- mean(huc.mat[ , paste0("residuals[", i, "]")])
-  #  tempDataSyncS$resid.wb[i] <- huc.mat[1 , paste0("residuals[", i, "]")]
-  }
+ggs_traceplot(ggs.wb, family = "ar1")
+ggs_density(ggs.wb, family="ar1")
+
+
 ```
 
 ## Check model fit
@@ -86,6 +199,25 @@ for(i in 1:length(tempDataSyncS$temp)) {
 # Observed vs Residuals
 g <- ggplot(tempDataSyncS, aes(temp, resid.wb)) 
 g + geom_point(alpha = 0.3) + geom_smooth() + theme_bw()
+
+
+#observed vs. predicted
+ggplot(tempDataSyncS, aes(temp, pred.wb)) +
+  geom_point(alpha = 0.3) + 
+  geom_abline(intercept=0,slope=1) + 
+  theme_bw() +
+  facet_wrap(~site)
+
+ggplot(tempDataSyncS[tempDataSyncS$year==2010  
+                     &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
+                     ,], aes(dOY, pred.wb)) +
+  geom_point() + 
+  geom_point(aes(dOY,temp),color='red')+
+  geom_line(aes(dOY,temp),color='red')+
+  geom_line(aes(dOY,(airTemp+4)*5),color='blue')+
+  facet_wrap(site~year)
+
+
 
 library(hexbin)
 g + stat_binhex(bins = 100) + geom_smooth() + theme_bw()
@@ -97,9 +229,9 @@ b <- ggplot(tempDataSyncS, aes(x = year, y = resid.wb))
 b + geom_boxplot() + coord_flip()
 
 # Residuals by covariates
-ggplot(tempDataSyncS, aes(airTemp, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()
+ggplot(tempDataSyncS, aes(airTemp, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw() + facet_wrap(~site)
 
-ggplot(tempDataSyncS, aes(dOY, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()
+ggplot(tempDataSyncS[tempDataSyncS$year==2010,], aes(dOY, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()+ facet_grid(site~.)
 
 ggplot(tempDataSyncS, aes(dOY^2, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()
 
