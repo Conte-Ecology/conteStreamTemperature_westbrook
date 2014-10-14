@@ -5,6 +5,14 @@ date: "October 3, 2014"
 output: html_document
 ---
 
+
+NO, ar(2)? doesn't seem worth it
+YES, keep cubic? if not, add q?
+
+structure on ar(), try RE by dOY
+
+correlation of ar with other variables, airTemplagged1 correlated?
+
 ```{r results = 'hide', warning=FALSE, message=FALSE}
 library(knitr)
 library(ggplot2)
@@ -14,6 +22,7 @@ library(nlme)
 library(devtools)
 install_github("Conte-Ecology/conteStreamTemperature")
 library(conteStreamTemperature)
+library(beepr)
 
 baseDir <- getwd() # works as long as you have the project loaded in RStudio - does not work for kniting
 
@@ -50,6 +59,9 @@ group_by(site) %>%
 # there are 10 flows with NA., set to 0
 #tempDataSyncS$flowS[is.na(tempDataSyncS$flowS)] <- 0
 tempDataSyncS$flowS[is.na(tempDataSyncS$flowS)] <- 0
+
+# doY as an integer
+tempDataSyncS$dOYInt <- as.numeric(strftime(tempDataSyncS$date, format = "%j"))
 ```
 
 ```{r dummy site variable}
@@ -77,13 +89,19 @@ ggplot(tempDataSyncS,aes(date,temp))+
   geom_point(aes(date,flowS),color='red')+
   facet_wrap(~site)
 
-
+ggplot(tempDataSyncS,aes(dOY,temp))+
+  geom_point(aes(color=factor(year)))+
+  geom_line(aes(color=factor(year)))+
+  facet_wrap(~site)
 
 ```
 
 ```{r subset data}
 
-tempDataSyncS <- filter(tempDataSyncS, site == 'MAUSGS_WB_MITCHELL' )#'MAUSGS_WEST_BROOK')
+tempDataSyncS <- filter(tempDataSyncS, year > 2005  
+                        
+                        #,site == 'MAUSGS_WB_MITCHELL' 
+                        )#'MAUSGS_WEST_BROOK')
 
 ```
 
@@ -91,42 +109,42 @@ tempDataSyncS <- filter(tempDataSyncS, site == 'MAUSGS_WB_MITCHELL' )#'MAUSGS_WE
 ```{r run JAGS model}
 
 # try moving mean air T?
-data.fixed <- data.frame(intercept = 1,
-                          airTemp = tempDataSyncS$airTemp 
+data.fixed <- data.frame(intercept = 1
+                         ,airTemp = tempDataSyncS$airTemp 
                          ,airTempLag1 = tempDataSyncS$airTempLagged1
                          ,airTempLag2 = tempDataSyncS$airTempLagged2
                          
                          ,flow = tempDataSyncS$flowS
                          
                          ,airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowS
-                         ,air1Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS
-                         ,air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS
+#                         ,air1Flow = tempDataSyncS$airTempLagged1 * tempDataSyncS$flowS
+#                         ,air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS
                          
                          #main site effects
-#                          ,site1 = tempDataSyncS$site1
-#                          ,site2 = tempDataSyncS$site2
-#                          ,site3 = tempDataSyncS$site3
-#                          ,site4 = tempDataSyncS$site4
-#                          ,site5 = tempDataSyncS$site5
-#                          ,site6 = tempDataSyncS$site6
-#                          
-#                          #site interaction with air temp
-#                          ,site1Air = tempDataSyncS$site1 * tempDataSyncS$airTemp
-#                          ,site2Air = tempDataSyncS$site2 * tempDataSyncS$airTemp
-#                          ,site3Air = tempDataSyncS$site3 * tempDataSyncS$airTemp
-#                          ,site4Air = tempDataSyncS$site4 * tempDataSyncS$airTemp
-#                          ,site5Air = tempDataSyncS$site5 * tempDataSyncS$airTemp
-#                          ,site6Air = tempDataSyncS$site6 * tempDataSyncS$airTemp
-#                          
-#                          
-#                          # site interaction with flow
-#                          ,site1Flow = tempDataSyncS$site1 * tempDataSyncS$flowS
-#                          ,site2Flow = tempDataSyncS$site2 * tempDataSyncS$flowS
-#                          ,site3Flow = tempDataSyncS$site3 * tempDataSyncS$flowS
-#                          ,site4Flow = tempDataSyncS$site4 * tempDataSyncS$flowS
-#                          ,site5Flow = tempDataSyncS$site5 * tempDataSyncS$flowS
-#                          ,site6Flow = tempDataSyncS$site6 * tempDataSyncS$flowS
-#                          
+                         ,site1 = tempDataSyncS$site1
+                         ,site2 = tempDataSyncS$site2
+                         ,site3 = tempDataSyncS$site3
+                         ,site4 = tempDataSyncS$site4
+                         ,site5 = tempDataSyncS$site5
+                         ,site6 = tempDataSyncS$site6
+                         
+                         #site interaction with air temp
+                         ,site1Air = tempDataSyncS$site1 * tempDataSyncS$airTemp
+                         ,site2Air = tempDataSyncS$site2 * tempDataSyncS$airTemp
+                         ,site3Air = tempDataSyncS$site3 * tempDataSyncS$airTemp
+                         ,site4Air = tempDataSyncS$site4 * tempDataSyncS$airTemp
+                         ,site5Air = tempDataSyncS$site5 * tempDataSyncS$airTemp
+                         ,site6Air = tempDataSyncS$site6 * tempDataSyncS$airTemp
+                         
+                         
+                         # site interaction with flow
+                         ,site1Flow = tempDataSyncS$site1 * tempDataSyncS$flowS
+                         ,site2Flow = tempDataSyncS$site2 * tempDataSyncS$flowS
+                         ,site3Flow = tempDataSyncS$site3 * tempDataSyncS$flowS
+                         ,site4Flow = tempDataSyncS$site4 * tempDataSyncS$flowS
+                         ,site5Flow = tempDataSyncS$site5 * tempDataSyncS$flowS
+                         ,site6Flow = tempDataSyncS$site6 * tempDataSyncS$flowS
+                         
 #                          
                           )
 
@@ -141,11 +159,14 @@ monitor.params <- c("residuals",
             "sigma",
             "B.0",
             "B.year",
-            #"rho.B.year",
+            "rho.B.year",
             "mu.year",
             "sigma.b.year",
             "stream.mu",
-            "ar1")
+            "ar1" #,
+    #        "ar1Mean",
+    #        "ar1SD"
+            )
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
 system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 1000, n.it = 1000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
@@ -165,9 +186,12 @@ for(i in 1:length(tempDataSyncS$temp)) {
   tempDataSyncS$resid.wb[i] <- mean(huc.mat[ , paste0("residuals[", i, "]")])
   tempDataSyncS$pred.wb[i] <- mean(huc.mat[ , paste0("stream.mu[", i, "]")])
 }
+rm(rmse)
 (rmse <- sqrt(sum(tempDataSyncS$resid.wb^2)/length(tempDataSyncS$resid.wb)) )
 # 0.988 no Ar
 # 0.729 w ar1
+
+beep()
 ```
 
 ## Evaluate MCMC Iterations
@@ -181,14 +205,19 @@ dev.off()
 ggmcmc(ggs.wb, file = "ggmcmc-wb.pdf", family = "B.year", plot = c("ggs_density",  "ggs_traceplot", "ggs_running", "ggs_compare_partial", "ggs_autocorrelation", "ggs_crosscorrelation", "ggs_Rhat", "ggs_geweke", "ggs_caterpillar"))
 dev.off()
 
-ggs_traceplot(ggs.wb, family = "B.0")
+ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]'),], family = "B.0")
 ggs_density(ggs.wb, family = "B.0")
+ggs_crosscorrelation(ggs.wb, family = "B.0")
 
 ggs_density(ggs.wb, family="B.year")
 ggs_traceplot(ggs.wb, family = "B.year")
 
 ggs_traceplot(ggs.wb, family = "ar1")
 ggs_density(ggs.wb, family="ar1")
+
+mean(ggs.wb[ggs.wb$Parameter == 'ar1[2]','value'])
+mean(ggs.wb[ggs.wb$Parameter == 'ar1Mean','value'])
+
 
 
 ```
@@ -198,7 +227,7 @@ ggs_density(ggs.wb, family="ar1")
 #------ Check residual patterns------
 # Observed vs Residuals
 g <- ggplot(tempDataSyncS, aes(temp, resid.wb)) 
-g + geom_point(alpha = 0.3) + geom_smooth() + theme_bw()
+g + geom_point(aes(color=factor(year)),alpha = 0.3) + geom_smooth() + theme_bw()
 
 
 #observed vs. predicted
@@ -206,10 +235,11 @@ ggplot(tempDataSyncS, aes(temp, pred.wb)) +
   geom_point(alpha = 0.3) + 
   geom_abline(intercept=0,slope=1) + 
   theme_bw() +
-  facet_wrap(~site)
+  facet_grid(year~site)
 
-ggplot(tempDataSyncS[tempDataSyncS$year==2010  
-                     &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
+ggplot(tempDataSyncS[tempDataSyncS$year==2008 
+   #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
+                     &  tempDataSyncS$site == 'MAUSGS_SEC_45_DL'
                      ,], aes(dOY, pred.wb)) +
   geom_point() + 
   geom_point(aes(dOY,temp),color='red')+
@@ -225,7 +255,7 @@ g + stat_binhex(bins = 100) + geom_smooth() + theme_bw()
 g + geom_point() + geom_density2d()
 
 # Residuals by random year
-b <- ggplot(tempDataSyncS, aes(x = year, y = resid.wb))
+b <- ggplot(tempDataSyncS, aes(x = factor(year), y = resid.wb))
 b + geom_boxplot() + coord_flip()
 
 # Residuals by covariates
@@ -240,7 +270,7 @@ acf(huc.mat[ , "residuals[1]"], lag.max = 40, xlab = "Lag", ylab = "Correlation"
 acf(huc.mat[ , "residuals[2]"], lag.max = 40, xlab = "Lag", ylab = "Correlation", main = "")
 
 # correlation in residuals over time 
-acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", main = "") # huge autocorrelation in the residuals!!!! Adding site might help this to some extent.
+acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", main = "") # 
 
 ```
 
