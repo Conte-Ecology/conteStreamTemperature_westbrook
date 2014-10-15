@@ -98,8 +98,9 @@ ggplot(tempDataSyncS,aes(dOY,temp))+
 
 ```{r subset data}
 
-tempDataSyncS <- filter(tempDataSyncS, year > 2005  
-                        
+tempDataSyncS <- filter(tempDataSyncS
+                        #, year > 2005  
+                        ,site == 'MAUSGS_SEC_45_DL'
                         #,site == 'MAUSGS_WB_MITCHELL' 
                         )#'MAUSGS_WEST_BROOK')
 
@@ -237,14 +238,14 @@ ggplot(tempDataSyncS, aes(temp, pred.wb)) +
   theme_bw() +
   facet_grid(year~site)
 
-ggplot(tempDataSyncS[tempDataSyncS$year==2008 
+ggplot(tempDataSyncS[tempDataSyncS$year==2010 
    #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
                      &  tempDataSyncS$site == 'MAUSGS_SEC_45_DL'
-                     ,], aes(dOY, pred.wb)) +
-  geom_point() + 
+                     ,], aes(dOY, pred.wb)) + 
   geom_point(aes(dOY,temp),color='red')+
   geom_line(aes(dOY,temp),color='red')+
   geom_line(aes(dOY,(airTemp+4)*5),color='blue')+
+  geom_point() +
   facet_wrap(site~year)
 
 
