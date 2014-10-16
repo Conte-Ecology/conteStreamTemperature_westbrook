@@ -9,7 +9,7 @@ output: html_document
 NO, ar(2)? doesn't seem worth it
 YES, keep cubic? if not, add q?
 
-structure on ar(), try RE by dOY
+DIDN'T WORK. structure on ar(), try RE by dOY
 
 correlation of ar with other variables, airTemplagged1 correlated?
 
@@ -24,7 +24,9 @@ install_github("Conte-Ecology/conteStreamTemperature")
 library(conteStreamTemperature)
 library(beepr)
 library(dplyr)
+```
 
+```{r load data}
 baseDir <- getwd() # works as long as you have the project loaded in RStudio - does not work for kniting
 
 dataInDir <- paste0(baseDir, '/dataIn/')
@@ -100,20 +102,22 @@ ggplot(tempDataSyncS,aes(dOY,temp))+
 ```{r subset data}
 
 tempDataSyncS <- filter(tempDataSyncS
-                        , year > 2005  
-                        #,site == 'MAUSGS_SEC_45_DL'
+                        #, year > 2005  
+                        ,site != 'MAUSGS_SEC_45_DL'
+                        ,site != 'MAUSGS_SEC_30_DL'
                         #,site == 'MAUSGS_WB_MITCHELL' 
                         )#'MAUSGS_WEST_BROOK')
+
 
 tempDataSyncS$rowNum <- 1:dim(tempDataSyncS)[1]
 
 firstObsRows <- tempDataSyncS %>%
-                  group_by(site,year) %>%
+                  group_by(river,year) %>%
                   filter(date == min(date))%>%
                   select(rowNum)
 
 evalRows <- tempDataSyncS %>%
-                  group_by(site,year) %>%
+                  group_by(river,year) %>%
                   filter(date != min(date))%>%
                   select(rowNum)
 ```
@@ -133,31 +137,21 @@ data.fixed <- data.frame(intercept = 1
 #                         ,air1Flow = tempDataSyncS$airTempLagged1 * tempDataSyncS$flowS
 #                         ,air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS
                          
-                         #main site effects
-                         ,site1 = tempDataSyncS$site1
-                         ,site2 = tempDataSyncS$site2
-                         ,site3 = tempDataSyncS$site3
-                         ,site4 = tempDataSyncS$site4
-                         ,site5 = tempDataSyncS$site5
-                         ,site6 = tempDataSyncS$site6
+                         #main river effects
+                         ,river1 = tempDataSyncS$river1
+                         ,river2 = tempDataSyncS$river2
+                         ,river3 = tempDataSyncS$river3
                          
-                         #site interaction with air temp
-                         ,site1Air = tempDataSyncS$site1 * tempDataSyncS$airTemp
-                         ,site2Air = tempDataSyncS$site2 * tempDataSyncS$airTemp
-                         ,site3Air = tempDataSyncS$site3 * tempDataSyncS$airTemp
-                         ,site4Air = tempDataSyncS$site4 * tempDataSyncS$airTemp
-                         ,site5Air = tempDataSyncS$site5 * tempDataSyncS$airTemp
-                         ,site6Air = tempDataSyncS$site6 * tempDataSyncS$airTemp
+                         #river interaction with air temp
+                         ,river1Air = tempDataSyncS$river1 * tempDataSyncS$airTemp
+                         ,river2Air = tempDataSyncS$river2 * tempDataSyncS$airTemp
+                         ,river3Air = tempDataSyncS$river3 * tempDataSyncS$airTemp
                          
-                         
-                         # site interaction with flow
-                         ,site1Flow = tempDataSyncS$site1 * tempDataSyncS$flowS
-                         ,site2Flow = tempDataSyncS$site2 * tempDataSyncS$flowS
-                         ,site3Flow = tempDataSyncS$site3 * tempDataSyncS$flowS
-                         ,site4Flow = tempDataSyncS$site4 * tempDataSyncS$flowS
-                         ,site5Flow = tempDataSyncS$site5 * tempDataSyncS$flowS
-                         ,site6Flow = tempDataSyncS$site6 * tempDataSyncS$flowS
-                         
+                         # river interaction with flow
+                         ,river1Flow = tempDataSyncS$river1 * tempDataSyncS$flowS
+                         ,river2Flow = tempDataSyncS$river2 * tempDataSyncS$flowS
+                         ,river3Flow = tempDataSyncS$river3 * tempDataSyncS$flowS
+                  
 #                          
                           )
 
@@ -213,7 +207,7 @@ beep()
 
 ```{r predictions of cubic by year}
 
-bYear <- means[25:52,]
+bYear <- means[25:52,] # need to make this flexible
 bYear$year <- substring(bYear$Parameter,8,8)
 bYear$p <- substring(bYear$Parameter,10,10)
 bYear$m <- bYear$mean #can't use 'mean' in dcast
@@ -276,20 +270,21 @@ ggplot(tempDataSyncS, aes(temp, pred.wb)) +
   geom_point(alpha = 0.3) + 
   geom_abline(intercept=0,slope=1) + 
   theme_bw() +
-  facet_grid(year~site)
+  facet_grid(year~river)
 
 yearPlot <- 2008
-ggplot(tempDataSyncS[tempDataSyncS$year==yearPlot
+ggplot(tempDataSyncS[
+                       #tempDataSyncS$year==yearPlot
    #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
-                     &  tempDataSyncS$site == 'MAUSGS_SEC_45_DL'
+                       tempDataSyncS$river == 'WEST BROOK'
                      ,], aes(dOY, pred.wb)) + 
   geom_point(aes(dOY,temp),color='red')+
   geom_line(aes(dOY,temp),color='red')+
   geom_line(aes(dOY,(airTemp+4)*5),color='blue')+
  # geom_line(aes(dOY,pred),data=predCubic[predCubic$year==yearPlot-2005,])+
-   geom_line(aes(dOY,pred,color=factor(year)),data=predCubic)+
-  geom_point() 
-  #facet_wrap(site~year)
+ #  geom_line(aes(dOY,pred,color=factor(year)),data=predCubic)+
+  geom_point() +
+  facet_wrap(~year)
 
 
 
