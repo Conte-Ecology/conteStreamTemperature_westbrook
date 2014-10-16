@@ -7,14 +7,16 @@
 #       }
 
       # Likelihood w ar1
-      temp[1] ~ dnorm(stream.mu[1], tau) 
-      stream.mu[1] <- trend[1]
-      trend[1] <- inprod(B.0[], X.0[1, ]) + inprod(B.year[year[1], ], X.year[1, ])
-      
-      for(i in 2:n){ # n observations
-        temp[i] ~ dnorm(stream.mu[i], tau)
-        stream.mu[i] <- trend[ i ] + ar1 * (temp[i-1] - trend[ i-1 ]) #residuals[ i - 1 ] #  
-        trend[ i ]  <- inprod(B.0[], X.0[i, ]) + inprod(B.year[year[i], ], X.year[i, ])
+      for(i in 1:nFirstObsRows){      
+        temp[firstObsRows[i]] ~ dnorm(stream.mu[firstObsRows[i]], tau) 
+        stream.mu[firstObsRows[i]] <- trend[firstObsRows[i]]
+        trend[firstObsRows[i]] <- inprod(B.0[], X.0[firstObsRows[i], ]) + inprod(B.year[year[firstObsRows[i]], ], X.year[firstObsRows[i], ])
+      }
+
+      for(i in 1:nEvalRows){ # n observations
+        temp[evalRows[i]] ~ dnorm(stream.mu[evalRows[i]], tau)
+        stream.mu[evalRows[i]] <- trend[ evalRows[i] ] + ar1 * (temp[evalRows[i]-1] - trend[ evalRows[i]-1 ])   
+        trend[ evalRows[i] ]  <- inprod(B.0[], X.0[evalRows[i], ]) + inprod(B.year[year[evalRows[i]], ], X.year[evalRows[i], ])
       }
       
 #      for( i in 1:nSite ){

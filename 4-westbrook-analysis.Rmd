@@ -16,13 +16,14 @@ correlation of ar with other variables, airTemplagged1 correlated?
 ```{r results = 'hide', warning=FALSE, message=FALSE}
 library(knitr)
 library(ggplot2)
-library(ggmcmc)
-library(dplyr)
+library(ggmcmc) # this uses plyr which conflicts with dplyr and makes group_by not work. make sure to load dplyr after this
+#detach(package:plyr)
 library(nlme)
 library(devtools)
 install_github("Conte-Ecology/conteStreamTemperature")
 library(conteStreamTemperature)
 library(beepr)
+library(dplyr)
 
 baseDir <- getwd() # works as long as you have the project loaded in RStudio - does not work for kniting
 
@@ -99,11 +100,22 @@ ggplot(tempDataSyncS,aes(dOY,temp))+
 ```{r subset data}
 
 tempDataSyncS <- filter(tempDataSyncS
-                        #, year > 2005  
-                        ,site == 'MAUSGS_SEC_45_DL'
+                        , year > 2005  
+                        #,site == 'MAUSGS_SEC_45_DL'
                         #,site == 'MAUSGS_WB_MITCHELL' 
                         )#'MAUSGS_WEST_BROOK')
 
+tempDataSyncS$rowNum <- 1:dim(tempDataSyncS)[1]
+
+firstObsRows <- tempDataSyncS %>%
+                  group_by(site,year) %>%
+                  filter(date == min(date))%>%
+                  select(rowNum)
+
+evalRows <- tempDataSyncS %>%
+                  group_by(site,year) %>%
+                  filter(date != min(date))%>%
+                  select(rowNum)
 ```
 
 
@@ -192,6 +204,10 @@ rm(rmse)
 # 0.988 no Ar
 # 0.729 w ar1
 
+means <- ggs.wb %>%
+  group_by(Parameter)%>%
+  summarise(mean=mean(value),sd=sd(value))
+
 beep()
 ```
 
@@ -238,7 +254,7 @@ ggplot(tempDataSyncS, aes(temp, pred.wb)) +
   theme_bw() +
   facet_grid(year~site)
 
-ggplot(tempDataSyncS[tempDataSyncS$year==2010 
+ggplot(tempDataSyncS[tempDataSyncS$year==2010
    #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
                      &  tempDataSyncS$site == 'MAUSGS_SEC_45_DL'
                      ,], aes(dOY, pred.wb)) + 
@@ -274,6 +290,30 @@ acf(huc.mat[ , "residuals[2]"], lag.max = 40, xlab = "Lag", ylab = "Correlation"
 acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", main = "") # 
 
 ```
+
+```{r predictions of cubic by year}
+
+bYear <- means[25:52,]
+bYear$year <- substring(bYear$Parameter,8,8)
+bYear$p <- substring(bYear$Parameter,10,10)
+bYear$m <- bYear$mean #can't use 'mean' in dcast
+bY <- dcast(bYear, year~p,value=m)
+bY$year <- as.numeric(bY$year)
+names(bY) <- c('year','int','q1','q2','q3')
+
+predCubic1 <- data.frame(dOY=rep(unique(tempDataSyncS$dOY),dim(bY)[1]),
+                        year=rep(1:7, each=length(unique(tempDataSyncS$dOY)))
+                        )
+                    
+predCubic <- left_join(predCubic1,bY)
+predCubic$pred <- predCubic$int + predCubic$q1 * predCubic$dOY + 
+                                  predCubic$q2 * predCubic$dOY^2 +
+                                  predCubic$q3 * predCubic$dOY^3
+
+
+ggplot(predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.5)
+```
+
 
 ```{r ending info}
 
