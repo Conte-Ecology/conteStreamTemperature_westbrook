@@ -170,9 +170,9 @@ monitor.params <- c("residuals",
             "mu.year",
             "sigma.b.year",
             "stream.mu",
-            "ar1" #,
-    #        "ar1Mean",
-    #        "ar1SD"
+            "ar1" ,
+            "ar1Mean",
+            "ar1SD"
             )
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
@@ -281,17 +281,17 @@ g + geom_point(aes(color=factor(year)),alpha = 0.3) + geom_smooth() + theme_bw()
 
 
 #observed vs. predicted
-ggplot(tempDataSyncS, aes(temp, pred.wb)) +
-  geom_point(alpha = 0.3) + 
-  geom_abline(intercept=0,slope=1) + 
-  theme_bw() +
-  facet_grid(year~river)
+  ggplot(tempDataSyncS, aes(temp, pred.wb)) +
+    geom_point(alpha = 0.3) + 
+    geom_abline(intercept=0,slope=1) + 
+    theme_bw() +
+    facet_grid(year~river)
 
 yearPlot <- 2008
 ggplot(tempDataSyncS[
-                       #tempDataSyncS$year==yearPlot
+                     tempDataSyncS$year==yearPlot
    #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
-                       tempDataSyncS$river == 'WEST BROOK'
+                     #  tempDataSyncS$river == 'WB JIMMY'
                      ,], aes(dOY, pred.wb)) + 
   geom_point(aes(dOY,temp),color='red')+
   geom_line(aes(dOY,temp),color='red')+
@@ -299,7 +299,7 @@ ggplot(tempDataSyncS[
  # geom_line(aes(dOY,pred),data=predCubic[predCubic$year==yearPlot-2005,])+
  #  geom_line(aes(dOY,pred,color=factor(year)),data=predCubic)+
   geom_point() +
-  facet_wrap(~year)
+  facet_wrap(~river)
 
 
 
