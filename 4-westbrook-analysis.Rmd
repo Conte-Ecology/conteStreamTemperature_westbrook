@@ -65,6 +65,10 @@ tempDataSyncS$flowS[is.na(tempDataSyncS$flowS)] <- 0
 
 # doY as an integer
 tempDataSyncS$dOYInt <- as.numeric(strftime(tempDataSyncS$date, format = "%j"))
+
+# index for testing trend across years
+tempDataSyncS$dOYYear <- ( tempDataSyncS$year - min(tempDataSyncS$year) + 1 ) * 365 +
+                           tempDataSyncS$dOYInt - 3000 #3000 to center values
 ```
 
 ```{r dummy site variable}
@@ -126,6 +130,9 @@ evalRows <- tempDataSyncS %>%
 ```{r run JAGS model}
 
 # try moving mean air T?
+# trend across years?
+#loook at correlation btw snow melt last day in spring and spring bp
+# get peak day and max value at peak day from RE. any trend?
 data.fixed <- data.frame(intercept = 1
                          ,airTemp = tempDataSyncS$airTemp 
                          ,airTempLag1 = tempDataSyncS$airTempLagged1
@@ -151,9 +158,13 @@ data.fixed <- data.frame(intercept = 1
                          ,river1Flow = tempDataSyncS$river1 * tempDataSyncS$flowS
                          ,river2Flow = tempDataSyncS$river2 * tempDataSyncS$flowS
                          ,river3Flow = tempDataSyncS$river3 * tempDataSyncS$flowS
-                  
-#                          
-                          )
+                                        
+                         ,dOYYear = tempDataSyncS$dOYYear 
+
+                         ,dOYYear1 = tempDataSyncS$dOYYear * tempDataSyncS$river1 
+                         ,dOYYear2 = tempDataSyncS$dOYYear * tempDataSyncS$river2   
+                         ,dOYYear3 = tempDataSyncS$dOYYear * tempDataSyncS$river3
+                          ) 
 
 data.random.years <- data.frame(intercept.year = 1, 
                      dOY = tempDataSyncS$dOY, 
@@ -176,7 +187,7 @@ monitor.params <- c("residuals",
             )
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
-system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 1000, n.it = 1000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
+system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 5000, n.it = 1000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
 
 rm(ggs.wb)
 ggs.wb <- ggs(M.wb)
@@ -256,6 +267,15 @@ ggmcmc(ggs.wb, file = "ggmcmc-wb.pdf", family = "B.year", plot = c("ggs_density"
 dev.off()
 
 ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]'),], family = "B.0")
+ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('B.0[14]','B.0[15]','B.0[16]','B.0[17]','B.0[18]','B.0[19]'),], family = "B.0")
+
+# trend effects
+mean(ggs.wb[ggs.wb$Parameter == 'B.0[16]','value']) * 365
+(mean(ggs.wb[ggs.wb$Parameter == 'B.0[16]','value'])+mean(ggs.wb[ggs.wb$Parameter == 'B.0[17]','value'])) * 365
+(mean(ggs.wb[ggs.wb$Parameter == 'B.0[16]','value'])+mean(ggs.wb[ggs.wb$Parameter == 'B.0[18]','value'])) * 365
+(mean(ggs.wb[ggs.wb$Parameter == 'B.0[16]','value'])+mean(ggs.wb[ggs.wb$Parameter == 'B.0[19]','value'])) * 365
+
+
 ggs_density(ggs.wb, family = "B.0")
 ggs_crosscorrelation(ggs.wb, family = "B.0")
 
@@ -281,7 +301,7 @@ g + geom_point(aes(color=factor(year)),alpha = 0.3) + geom_smooth() + theme_bw()
 
 
 #observed vs. predicted
-  ggplot(tempDataSyncS, aes(temp, pred.wb)) +
+  ggplot(tempDataSyncS[tempDataSyncS$year>2006,], aes(temp, pred.wb)) +
     geom_point(alpha = 0.3) + 
     geom_abline(intercept=0,slope=1) + 
     theme_bw() +
