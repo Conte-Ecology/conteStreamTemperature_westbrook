@@ -1,0 +1,94 @@
+```{r load data}
+baseDir <- getwd() # works as long as you have the project loaded in RStudio - does not work for kniting
+
+dataInDir <- paste0(baseDir, '/dataIn/')
+dataOutDir <- paste0(baseDir, '/dataOut/')
+dataLocalDir <- paste0(baseDir, '/localData/')
+graphsDir <- paste0(baseDir, '/graphs/')
+codeDir <- paste0(baseDir, '/code/')
+
+load(paste0(dataLocalDir,'means.RData'))
+
+source(paste0(codeDir,'gelmanDiagFunction.r'))
+
+```
+
+```{r means tables}
+
+intersectSeveral <- function(...) { Reduce(intersect, list(...)) } 
+
+# exclude the variables in the grep() statement
+# intersect works on pairs. the intersectSeveral function generates the intersectin of multiple lists
+keepRows <- 
+  intersectSeveral(grep("residuals", x=ggs.wb$Parameter,invert=TRUE),
+                   grep("stream.mu", x=ggs.wb$Parameter,invert=TRUE),
+                   grep("rho.B.year",x=ggs.wb$Parameter,invert=TRUE)
+                  )
+
+rHat <- unique( ggs_Rhat(ggs.wb[keepRows,])$data )
+
+m <- left_join(means,rHat[,c('Parameter','Rhat')])
+
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r predictions of cubic by year}
+
+#find B.year means and do predictions
+
+# rows that start with B.year
+bYearRows <- grep("^B.year",x=means$Parameter) # the ^ excludes anything before 'B.year
+bYear <- means[bYearRows,] 
+
+# Need to pull out the 'year' and 'term' variables from B.year[year,term]
+#location in text sequence
+firstBracket <- regexpr("\\[",bYear$Parameter)
+comma <- regexpr("\\,",bYear$Parameter)
+lastBracket <- regexpr("\\]",bYear$Parameter)
+
+# pull out values
+bYear$year <- substring(bYear$Parameter,firstBracket+1,comma-1)
+bYear$p <- substring(bYear$Parameter,comma+1,lastBracket-1)
+
+# cast bYear to wide format
+bYear$m <- bYear$mean #can't use 'mean' in dcast
+bY <- dcast(bYear, year~p,value=m)
+bY$year <- as.numeric(bY$year)
+names(bY) <- c('year','int','q1','q2','q3')
+
+predCubic1 <- data.frame(dOY=rep(unique(tempDataSyncS$dOY),dim(bY)[1]),
+                        year=rep(1:nrow(bY), each=length(unique(tempDataSyncS$dOY)))
+                        )
+                    
+predCubic <- left_join(predCubic1,bY)
+predCubic$pred <- predCubic$int + predCubic$q1 * predCubic$dOY + 
+                                  predCubic$q2 * predCubic$dOY^2 +
+                                  predCubic$q3 * predCubic$dOY^3
+
+
+ggplot(predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.5)
+```

@@ -159,8 +159,7 @@ data.fixed <- data.frame(intercept = 1
                          ,river2Flow = tempDataSyncS$river2 * tempDataSyncS$flowS
                          ,river3Flow = tempDataSyncS$river3 * tempDataSyncS$flowS
                                         
-                         ,dOYYear = tempDataSyncS$dOYYear 
-
+                         ,dOYYear0 = tempDataSyncS$dOYYear * tempDataSyncS$river0
                          ,dOYYear1 = tempDataSyncS$dOYYear * tempDataSyncS$river1 
                          ,dOYYear2 = tempDataSyncS$dOYYear * tempDataSyncS$river2   
                          ,dOYYear3 = tempDataSyncS$dOYYear * tempDataSyncS$river3
@@ -211,47 +210,10 @@ rm(rmse)
 
 means <- ggs.wb %>%
   group_by(Parameter)%>%
-  summarise(mean=mean(value),sd=sd(value))
-
+  summarise(mean=mean(value),sd=sd(value),qLo=quantile(value,probs=c(0.025)),qHi=quantile(value,probs=c(0.975)))
+save(means,file=paste0(dataLocalDir,'means.RData'))
 
 beep()
-```
-
-```{r predictions of cubic by year}
-
-#find B.year means and do predictions
-
-# rows that start with B.year
-bYearRows <- grep("^B.year",x=means$Parameter) # the ^ excludes anything before 'B.year
-bYear <- means[bYearRows,] 
-
-# Need to pull out the 'year' and 'term' variables from B.year[year,term]
-#location in text sequence
-firstBracket <- regexpr("\\[",bYear$Parameter)
-comma <- regexpr("\\,",bYear$Parameter)
-lastBracket <- regexpr("\\]",bYear$Parameter)
-
-# pull out values
-bYear$year <- substring(bYear$Parameter,firstBracket+1,comma-1)
-bYear$p <- substring(bYear$Parameter,comma+1,lastBracket-1)
-
-# cast bYear to wide format
-bYear$m <- bYear$mean #can't use 'mean' in dcast
-bY <- dcast(bYear, year~p,value=m)
-bY$year <- as.numeric(bY$year)
-names(bY) <- c('year','int','q1','q2','q3')
-
-predCubic1 <- data.frame(dOY=rep(unique(tempDataSyncS$dOY),dim(bY)[1]),
-                        year=rep(1:nrow(bY), each=length(unique(tempDataSyncS$dOY)))
-                        )
-                    
-predCubic <- left_join(predCubic1,bY)
-predCubic$pred <- predCubic$int + predCubic$q1 * predCubic$dOY + 
-                                  predCubic$q2 * predCubic$dOY^2 +
-                                  predCubic$q3 * predCubic$dOY^3
-
-
-ggplot(predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.5)
 ```
 
 
@@ -269,11 +231,13 @@ dev.off()
 ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]'),], family = "B.0")
 ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('B.0[14]','B.0[15]','B.0[16]','B.0[17]','B.0[18]','B.0[19]'),], family = "B.0")
 
+ggs_Rhat(ggs.wb, family = "B.0")
+
 # trend effects
 mean(ggs.wb[ggs.wb$Parameter == 'B.0[16]','value']) * 365
-(mean(ggs.wb[ggs.wb$Parameter == 'B.0[16]','value'])+mean(ggs.wb[ggs.wb$Parameter == 'B.0[17]','value'])) * 365
-(mean(ggs.wb[ggs.wb$Parameter == 'B.0[16]','value'])+mean(ggs.wb[ggs.wb$Parameter == 'B.0[18]','value'])) * 365
-(mean(ggs.wb[ggs.wb$Parameter == 'B.0[16]','value'])+mean(ggs.wb[ggs.wb$Parameter == 'B.0[19]','value'])) * 365
+mean(ggs.wb[ggs.wb$Parameter == 'B.0[17]','value']) * 365
+mean(ggs.wb[ggs.wb$Parameter == 'B.0[18]','value']) * 365
+mean(ggs.wb[ggs.wb$Parameter == 'B.0[19]','value']) * 365
 
 
 ggs_density(ggs.wb, family = "B.0")
@@ -305,7 +269,7 @@ g + geom_point(aes(color=factor(year)),alpha = 0.3) + geom_smooth() + theme_bw()
     geom_point(alpha = 0.3) + 
     geom_abline(intercept=0,slope=1) + 
     theme_bw() +
-    facet_grid(year~river)
+    facet_grid(year~riverOrdered)
 
 yearPlot <- 2008
 ggplot(tempDataSyncS[
@@ -319,7 +283,7 @@ ggplot(tempDataSyncS[
  # geom_line(aes(dOY,pred),data=predCubic[predCubic$year==yearPlot-2005,])+
  #  geom_line(aes(dOY,pred,color=factor(year)),data=predCubic)+
   geom_point() +
-  facet_wrap(~river)
+  facet_wrap(~riverOrdered)
 
 
 
