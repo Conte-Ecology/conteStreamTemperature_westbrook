@@ -159,10 +159,10 @@ data.fixed <- data.frame(intercept = 1
                          ,river2Flow = tempDataSyncS$river2 * tempDataSyncS$flowS
                          ,river3Flow = tempDataSyncS$river3 * tempDataSyncS$flowS
                                         
-                         ,dOYYear0 = tempDataSyncS$dOYYear * tempDataSyncS$river0
-                         ,dOYYear1 = tempDataSyncS$dOYYear * tempDataSyncS$river1 
-                         ,dOYYear2 = tempDataSyncS$dOYYear * tempDataSyncS$river2   
-                         ,dOYYear3 = tempDataSyncS$dOYYear * tempDataSyncS$river3
+#                          ,dOYYear0 = tempDataSyncS$dOYYear * tempDataSyncS$river0
+#                          ,dOYYear1 = tempDataSyncS$dOYYear * tempDataSyncS$river1 
+#                          ,dOYYear2 = tempDataSyncS$dOYYear * tempDataSyncS$river2   
+#                          ,dOYYear3 = tempDataSyncS$dOYYear * tempDataSyncS$river3
                           ) 
 
 data.random.years <- data.frame(intercept.year = 1, 
@@ -186,15 +186,16 @@ monitor.params <- c("residuals",
             )
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
-system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 5000, n.it = 1000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
+system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 5000, n.it = 5000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
+
+save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
 
 rm(ggs.wb)
 ggs.wb <- ggs(M.wb)
+gc() # get rid of ggs mess
 #ggs_traceplot(ggs.wb, family = "deviance")
 #ggs_traceplot(ggs.wb, family = "B.0")
 #ggs_density(ggs.wb, family = "B.0")
-
-#save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
 
 huc.mat <- as.matrix(M.wb)
 tempDataSyncS$resid.wb <- NA
@@ -210,7 +211,12 @@ rm(rmse)
 
 means <- ggs.wb %>%
   group_by(Parameter)%>%
-  summarise(mean=mean(value),sd=sd(value),qLo=quantile(value,probs=c(0.025)),qHi=quantile(value,probs=c(0.975)))
+  summarise(mean=mean(value),
+            sd=sd(value),
+            qLo=quantile(value,probs=c(0.025)),
+            qHi=quantile(value,probs=c(0.975))
+            )
+
 save(means,file=paste0(dataLocalDir,'means.RData'))
 
 beep()

@@ -9,8 +9,6 @@ codeDir <- paste0(baseDir, '/code/')
 
 load(paste0(dataLocalDir,'means.RData'))
 
-source(paste0(codeDir,'gelmanDiagFunction.r'))
-
 ```
 
 ```{r means tables}
@@ -27,12 +25,13 @@ keepRows <-
 
 rHat <- unique( ggs_Rhat(ggs.wb[keepRows,])$data )
 
+# table of parameter estimates for MS
 m <- left_join(means,rHat[,c('Parameter','Rhat')])
 
 
 
 
-
+ggs_caterpillar(ggs.wb[keepRows,])
 
 
 
@@ -41,54 +40,36 @@ m <- left_join(means,rHat[,c('Parameter','Rhat')])
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```{r predictions of cubic by year}
 
-#find B.year means and do predictions
+pC <- predCubic(means)
 
-# rows that start with B.year
-bYearRows <- grep("^B.year",x=means$Parameter) # the ^ excludes anything before 'B.year
-bYear <- means[bYearRows,] 
+ggCubic <- ggplot(pC$predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.25)
 
-# Need to pull out the 'year' and 'term' variables from B.year[year,term]
-#location in text sequence
-firstBracket <- regexpr("\\[",bYear$Parameter)
-comma <- regexpr("\\,",bYear$Parameter)
-lastBracket <- regexpr("\\]",bYear$Parameter)
+ggCubic + geom_point(aes(maxX,maxY), data = pC$bY)
 
-# pull out values
-bYear$year <- substring(bYear$Parameter,firstBracket+1,comma-1)
-bYear$p <- substring(bYear$Parameter,comma+1,lastBracket-1)
+# max temp over years
+ggplot(pC$bY, aes(year,maxY)) + geom_point() + geom_smooth(method="lm")
 
-# cast bYear to wide format
-bYear$m <- bYear$mean #can't use 'mean' in dcast
-bY <- dcast(bYear, year~p,value=m)
-bY$year <- as.numeric(bY$year)
-names(bY) <- c('year','int','q1','q2','q3')
+# day of max temp over years
+ggplot(pC$bY, aes(year,maxX)) + geom_point() + geom_smooth(method="lm")
 
-predCubic1 <- data.frame(dOY=rep(unique(tempDataSyncS$dOY),dim(bY)[1]),
-                        year=rep(1:nrow(bY), each=length(unique(tempDataSyncS$dOY)))
-                        )
-                    
-predCubic <- left_join(predCubic1,bY)
-predCubic$pred <- predCubic$int + predCubic$q1 * predCubic$dOY + 
-                                  predCubic$q2 * predCubic$dOY^2 +
-                                  predCubic$q3 * predCubic$dOY^3
+# day of max temp over years
+bYM <- melt(pC$bY[,c('year','dOYMinus2','dOYMinus1','dOYPlus1','dOYPlus2')],id='year') 
+bYM$std <- ifelse(bYM$variable %in% c('dOYMinus1','dOYPlus1'), 1, 2 ) 
+bYM$tempAdj <- bYM$value + 18 # 18 for now as a fill-in
 
+predCubicStd <- 
+  ggplot(bYM, aes(year,tempAdj,color=variable,shape=variable)) +
+  geom_point(size=3) +
+  geom_smooth(method="lm") +
+  facet_wrap(~std, scales = "free")
 
-ggplot(predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.5)
+ggsave( file=paste0(graphsDir,'predCubicStd.png'), plot=predCubicStd, dpi=600 , width=6,height=6, units='in' )
+
+# none of these is significant
+summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYMinus2',] ))
+summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYMinus1',] ))
+summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus1',] ))
+summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus2',] ))
 ```
