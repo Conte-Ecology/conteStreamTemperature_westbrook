@@ -1,3 +1,8 @@
+cross-validation
+rmse by river,year
+
+
+
 ```{r load data}
 baseDir <- getwd() # works as long as you have the project loaded in RStudio - does not work for kniting
 
@@ -8,15 +13,55 @@ graphsDir <- paste0(baseDir, '/graphs/')
 codeDir <- paste0(baseDir, '/code/')
 
 load(paste0(dataLocalDir,'means.RData'))
+load(paste0(dataLocalDir,'tempDataSyncSUsed.RData'))
 
 ```
 
-```{r means tables}
+```{r raw data graphs}
+# raw unstandardized are in tempDataSync
+
+tempDataSync$river <- 'WEST BROOK'
+tempDataSync$river[ tempDataSync$site == 'MAUSGS_WB_MITCHELL' ] <- 'WB MITCHELL' 
+tempDataSync$river[ tempDataSync$site == 'MAUSGS_WB_OBEAR' ] <- 'WB OBEAR' 
+tempDataSync$river[ tempDataSync$site == 'MAUSGS_WB_JIMMY' ] <- 'WB JIMMY' 
+tempDataSync$riverOrdered <- factor(tempDataSync$river,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
+
+ggRawJimmy <- 
+ggplot(tempDataSync[tempDataSync$riverOrdered == 'WB JIMMY',],aes(dOY,temp))+
+  geom_line(size=0.5)+
+  geom_line(aes(dOY,airTemp),color='red',size=0.5)+
+  scale_x_continuous("Day of year") +
+  scale_y_continuous(expression(paste("Temperature ( ",degree, "C)", sep = ""))) +
+  theme_bw(base_size=25)+
+  facet_wrap(~year)
+
+ggsave( file=paste0(graphsDir,'ggRawJimmy.png'), plot=ggRawJimmy, dpi=600 , width=8,height=5, units='in', scale=2 )
+
+```
+
+Model validation
+
+```{r obs v pred}
+
+#observed vs. predicted
+obsPred <- 
+ggplot(tempDataSyncS[tempDataSyncS$year>2006,], aes(temp, pred.wb)) +
+    geom_point(alpha = 0.3) + 
+    geom_abline(intercept=0,slope=1) + 
+    theme_bw() +
+    facet_grid(year~riverOrdered)
+
+ggsave( file=paste0(graphsDir,'obsPred.png'), plot=obsPred, dpi=600 , width=8,height=5, units='in', scale=2 )
+
+```
+
+
+```{r means tables with rHat}
 
 intersectSeveral <- function(...) { Reduce(intersect, list(...)) } 
 
 # exclude the variables in the grep() statement
-# intersect works on pairs. the intersectSeveral function generates the intersectin of multiple lists
+# intersect works on pairs. the intersectSeveral function generates the intersection of multiple lists
 keepRows <- 
   intersectSeveral(grep("residuals", x=ggs.wb$Parameter,invert=TRUE),
                    grep("stream.mu", x=ggs.wb$Parameter,invert=TRUE),

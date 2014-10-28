@@ -36,6 +36,7 @@ graphsDir <- paste0(baseDir, '/graphs/')
 
 # load standardized and formatted data created with the 3-statModelPrep.Rmd script
 load(paste0(dataOutDir, 'tempDataSync.RData'))
+
 tempDataSyncS$river <- 'WEST BROOK'
 tempDataSyncS$river[ tempDataSyncS$site == 'MAUSGS_WB_MITCHELL' ] <- 'WB MITCHELL' 
 tempDataSyncS$river[ tempDataSyncS$site == 'MAUSGS_WB_OBEAR' ] <- 'WB OBEAR' 
@@ -55,18 +56,26 @@ tempDataSyncS <- merge(x=tempDataSyncS, y=et[,c('riverOrdered','flow','dateDate'
 
 # standardize flow by site
 tempDataSyncS <- 
-tempDataSyncS %>%
-group_by(site) %>%
-  mutate( flowS = ( flow - mean(flow,na.rm = TRUE) ) / sd(flow,na.rm = TRUE) )
+  tempDataSyncS %>%
+    mutate( flowL = log( flow ) ) %>%
+    mutate( sweL = log( swe + 1 ) ) %>%
+  group_by(site) %>%
+    mutate( flowS = ( flow - mean(flow,na.rm = TRUE) ) / sd(flow,na.rm = TRUE) ) %>%
+    mutate( flowLS = ( flowL - mean(flowL,na.rm = TRUE) ) / sd(flowL,na.rm = TRUE) ) %>%
+    mutate( sweLS = ( sweL - mean(sweL,na.rm = TRUE) ) / sd(sweL,na.rm = TRUE) ) %>%
+    mutate( ImpoundmentsAllSqKMS = ( ImpoundmentsAllSqKM - mean(ImpoundmentsAllSqKM,na.rm = TRUE) ) / sd(ImpoundmentsAllSqKM,na.rm = TRUE) )
+
+tempDataSyncS$swe0 <- ifelse(tempDataSyncS$swe < 0, 0, tempDataSyncS$swe )
 
 # there are 10 flows with NA., set to 0
 #tempDataSyncS$flowS[is.na(tempDataSyncS$flowS)] <- 0
 tempDataSyncS$flowS[is.na(tempDataSyncS$flowS)] <- 0
+tempDataSyncS$flowLS[is.na(tempDataSyncS$flowLS)] <- 0
 
-# doY as an integer
+# doY as an integer  
 tempDataSyncS$dOYInt <- as.numeric(strftime(tempDataSyncS$date, format = "%j"))
 
-# index for testing trend across years
+# index for testing trend across years-not used in the end
 tempDataSyncS$dOYYear <- ( tempDataSyncS$year - min(tempDataSyncS$year) + 1 ) * 365 +
                            tempDataSyncS$dOYInt - 3000 #3000 to center values
 ```
@@ -93,13 +102,17 @@ tempDataSyncS$site6 <- ifelse( tempDataSyncS$site=='MAUSGS_WEST_BROOK',1,0 )
 ggplot(tempDataSyncS,aes(date,temp))+
   geom_point()+
   geom_point(aes(date,airTemp))+
-  geom_point(aes(date,flowS),color='red')+
+  geom_point(aes(date,flowLS),color='red')+
   facet_wrap(~site)
 
 ggplot(tempDataSyncS,aes(dOY,temp))+
   geom_point(aes(color=factor(year)))+
   geom_line(aes(color=factor(year)))+
   facet_wrap(~site)
+
+ggplot(tempDataSyncS,aes(dOY,swe0))+
+  geom_point()+
+  facet_wrap(~year)
 
 ```
 
@@ -124,25 +137,28 @@ evalRows <- tempDataSyncS %>%
                   group_by(river,year) %>%
                   filter(date != min(date))%>%
                   select(rowNum)
+
+save( tempDataSyncS, file = paste0(dataLocalDir,'tempDataSyncSUsed.RData'))
 ```
 
 
 ```{r run JAGS model}
 
 # try moving mean air T?
-# trend across years?
+# trend across years? use derived paramters
 #loook at correlation btw snow melt last day in spring and spring bp
 # get peak day and max value at peak day from RE. any trend?
+
 data.fixed <- data.frame(intercept = 1
                          ,airTemp = tempDataSyncS$airTemp 
                          ,airTempLag1 = tempDataSyncS$airTempLagged1
                          ,airTempLag2 = tempDataSyncS$airTempLagged2
                          
-                         ,flow = tempDataSyncS$flowS
+                         ,flow =  tempDataSyncS$flowLS
                          
-                         ,airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowS
-#                         ,air1Flow = tempDataSyncS$airTempLagged1 * tempDataSyncS$flowS
-#                         ,air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowS
+                         ,airFlow = tempDataSyncS$airTemp * tempDataSyncS$flowLS
+#                         ,air1Flow = tempDataSyncS$airTempLagged1 * tempDataSyncS$flowLS
+#                         ,air2Flow = tempDataSyncS$airTempLagged2 * tempDataSyncS$flowLS
                          
                          #main river effects
                          ,river1 = tempDataSyncS$river1
@@ -155,10 +171,14 @@ data.fixed <- data.frame(intercept = 1
                          ,river3Air = tempDataSyncS$river3 * tempDataSyncS$airTemp
                          
                          # river interaction with flow
-                         ,river1Flow = tempDataSyncS$river1 * tempDataSyncS$flowS
-                         ,river2Flow = tempDataSyncS$river2 * tempDataSyncS$flowS
-                         ,river3Flow = tempDataSyncS$river3 * tempDataSyncS$flowS
-                                        
+        #                 ,river1Flow = tempDataSyncS$river1 * tempDataSyncS$flowLS
+        #                 ,river2Flow = tempDataSyncS$river2 * tempDataSyncS$flowLS
+        #                 ,river3Flow = tempDataSyncS$river3 * tempDataSyncS$flowLS
+
+                   #      ,imp = tempDataSyncS$ImpoundmentsAllSqKM
+                         ,swe = tempDataSyncS$swe0   
+         #                ,sweFlow = tempDataSyncS$swe0 * tempDataSyncS$flowLS
+
 #                          ,dOYYear0 = tempDataSyncS$dOYYear * tempDataSyncS$river0
 #                          ,dOYYear1 = tempDataSyncS$dOYYear * tempDataSyncS$river1 
 #                          ,dOYYear2 = tempDataSyncS$dOYYear * tempDataSyncS$river2   
@@ -186,16 +206,14 @@ monitor.params <- c("residuals",
             )
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
-system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 5000, n.it = 5000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
+
+system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 5000, n.it = 1000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
 
 save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
 
 rm(ggs.wb)
 ggs.wb <- ggs(M.wb)
-gc() # get rid of ggs mess
-#ggs_traceplot(ggs.wb, family = "deviance")
-#ggs_traceplot(ggs.wb, family = "B.0")
-#ggs_density(ggs.wb, family = "B.0")
+gc() # get rid of ggs mess - may not be necessary on a pc
 
 huc.mat <- as.matrix(M.wb)
 tempDataSyncS$resid.wb <- NA
@@ -204,10 +222,12 @@ for(i in 1:length(tempDataSyncS$temp)) {
   tempDataSyncS$resid.wb[i] <- mean(huc.mat[ , paste0("residuals[", i, "]")])
   tempDataSyncS$pred.wb[i] <- mean(huc.mat[ , paste0("stream.mu[", i, "]")])
 }
-rm(rmse)
-(rmse <- sqrt(sum(tempDataSyncS$resid.wb^2)/length(tempDataSyncS$resid.wb)) )
-# 0.988 no Ar
-# 0.729 w ar1
+
+rmseBy <- 
+  tempDataSyncS %>%
+  group_by( year,riverOrdered ) %>%
+  summarise( rmse = rmse(resid.wb) ) %>%
+  dcast(year~riverOrdered)
 
 means <- ggs.wb %>%
   group_by(Parameter)%>%
@@ -217,7 +237,7 @@ means <- ggs.wb %>%
             qHi=quantile(value,probs=c(0.975))
             )
 
-save(means,file=paste0(dataLocalDir,'means.RData'))
+save(rmseBy,means,file=paste0(dataLocalDir,'means.RData'))
 
 beep()
 ```
@@ -238,12 +258,6 @@ ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('B.0[1]','B.0[2]','B.0[3]','B.0[4]'
 ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('B.0[14]','B.0[15]','B.0[16]','B.0[17]','B.0[18]','B.0[19]'),], family = "B.0")
 
 ggs_Rhat(ggs.wb, family = "B.0")
-
-# trend effects
-mean(ggs.wb[ggs.wb$Parameter == 'B.0[16]','value']) * 365
-mean(ggs.wb[ggs.wb$Parameter == 'B.0[17]','value']) * 365
-mean(ggs.wb[ggs.wb$Parameter == 'B.0[18]','value']) * 365
-mean(ggs.wb[ggs.wb$Parameter == 'B.0[19]','value']) * 365
 
 
 ggs_density(ggs.wb, family = "B.0")
@@ -277,7 +291,7 @@ g + geom_point(aes(color=factor(year)),alpha = 0.3) + geom_smooth() + theme_bw()
     theme_bw() +
     facet_grid(year~riverOrdered)
 
-yearPlot <- 2008
+yearPlot <- 2010
 ggplot(tempDataSyncS[
                      tempDataSyncS$year==yearPlot
    #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
@@ -305,6 +319,8 @@ b + geom_boxplot() + coord_flip()
 # Residuals by covariates
 ggplot(tempDataSyncS, aes(airTemp, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw() + facet_wrap(~site)
 
+ggplot(tempDataSyncS, aes(swe0*flowS, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw() + facet_wrap(~site)
+
 ggplot(tempDataSyncS[tempDataSyncS$year==2010,], aes(dOY, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()+ facet_grid(site~.)
 
 ggplot(tempDataSyncS, aes(dOY^2, resid.wb)) + geom_point(alpha = 0.5) + geom_smooth() + theme_bw()
@@ -317,6 +333,75 @@ acf(huc.mat[ , "residuals[2]"], lag.max = 40, xlab = "Lag", ylab = "Correlation"
 acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", main = "") # 
 
 ```
+
+```{r cross-validation}
+#assumes code has been run up to the model call in 'run Jags model' chunk
+
+y <- data.frame(year=unique(tempDataSyncS$year))
+years <- arrange(y,year)
+
+cVSummary  <- predictSummary <- list()
+
+# loop over years
+for ( i in 1:nrow(years) ){
+  
+  y <- years$year[i]
+  print(c(i,y))
+
+  dat <- tempDataSyncS
+  dat$temp[ dat$year %in% y ] <- NA
+  
+  system.time(M.wb <- modelRegionalTempWB(dat,
+                                          data.fixed=data.fixed, 
+                                          data.random.years=data.random.years, 
+                                          n.burn = 500, n.it = 1000, n.thin = 5, nc = 3,
+                                          coda = coda.tf, param.list = monitor.params))
+  
+  save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidate",y,".RData"))
+  
+  #rm(ggs.wb)
+  #ggs.wb <- ggs(M.wb)
+  #gc() # get rid of ggs mess - may not be necessary on a pc
+  
+  huc.mat <- as.matrix(M.wb)
+  tempDataSyncS$resid.wb <- NA
+  tempDataSyncS$pred.wb <- NA
+  
+  for(i in 1:length(tempDataSyncS$temp)) {
+    # these resids are very small because the pred ~ obs
+    tempDataSyncS$resid.wb[i] <- mean(huc.mat[ , paste0("residuals[", i, "]")])
+    tempDataSyncS$pred.wb[i] <- mean(huc.mat[ , paste0("stream.mu[", i, "]")])
+  }
+
+  # residuals based on predicted temps and acutal observed temps ( including the temps left out )
+  tempDataSyncS$resid <- tempDataSyncS$temp - tempDataSyncS$pred.wb
+
+  #rm(rmse)
+  print(c( rmse(tempDataSyncS$resid),rmse(tempDataSyncS$resid.wb)) )
+  
+  rmseBy <- 
+    tempDataSyncS %>%
+    group_by( year,riverOrdered ) %>%
+    summarise( rmse = rmse( resid ) ) %>%
+    dcast(year~riverOrdered)
+#     #group_by(year) %>%
+#     rowwise() %>%
+#     mutate( rowMean = mean(.,na.rm=T) ) 
+  
+  print(rmseBy)  
+
+  cVSummary[[i]] <- rmseBy
+  predictSummary[[i]] <- data.frame( yearOut = y, pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid )
+
+  beep(10)
+
+ } 
+
+  beep()
+
+
+```
+
 
 
 ```{r ending info}
