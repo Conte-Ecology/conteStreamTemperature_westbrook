@@ -1,6 +1,6 @@
 ---
 title: "run JAGS"
-author: "Daniel Hocking"
+author: "Ben Letcher and Daniel Hocking"
 date: "October 3, 2014"
 output: html_document
 ---
@@ -17,7 +17,6 @@ correlation of ar with other variables, airTemplagged1 correlated?
 library(knitr)
 library(ggplot2)
 library(ggmcmc) # this uses plyr which conflicts with dplyr and makes group_by not work. make sure to load dplyr after this
-#detach(package:plyr)
 library(nlme)
 library(devtools)
 install_github("Conte-Ecology/conteStreamTemperature")
@@ -54,7 +53,13 @@ tempDataSyncS <- merge(x=tempDataSyncS, y=et[,c('riverOrdered','flow','dateDate'
                        by.y=c('riverOrdered','dateDate'),
                        all.x=T)
 
-# standardize flow by site
+# add in correct drainage area  - data from hig res flow lines from kyle 
+tempDataSyncS$dA <- 0.55833
+tempDataSyncS$dA[tempDataSyncS$riverOrdered == "WB JIMMY"] <- 0.02175
+tempDataSyncS$dA[tempDataSyncS$riverOrdered == "WB MITCHELL"] <- 0.02932
+tempDataSyncS$dA[tempDataSyncS$riverOrdered == "WB OBEAR"] <- 0.01082
+
+# standardize flow etc by site
 tempDataSyncS <- 
   tempDataSyncS %>%
     mutate( flowL = log( flow ) ) %>%
@@ -63,7 +68,9 @@ tempDataSyncS <-
     mutate( flowS = ( flow - mean(flow,na.rm = TRUE) ) / sd(flow,na.rm = TRUE) ) %>%
     mutate( flowLS = ( flowL - mean(flowL,na.rm = TRUE) ) / sd(flowL,na.rm = TRUE) ) %>%
     mutate( sweLS = ( sweL - mean(sweL,na.rm = TRUE) ) / sd(sweL,na.rm = TRUE) ) %>%
-    mutate( ImpoundmentsAllSqKMS = ( ImpoundmentsAllSqKM - mean(ImpoundmentsAllSqKM,na.rm = TRUE) ) / sd(ImpoundmentsAllSqKM,na.rm = TRUE) )
+    mutate( ImpoundmentsAllSqKMS = ( ImpoundmentsAllSqKM - mean(ImpoundmentsAllSqKM,na.rm = TRUE) ) / sd(ImpoundmentsAllSqKM,na.rm = TRUE) ) #%>%
+    #mutate( dAS = ( dA - mean(dA,na.rm = TRUE) ) / sd(dA,na.rm = TRUE) )       
+
 
 tempDataSyncS$swe0 <- ifelse(tempDataSyncS$swe < 0, 0, tempDataSyncS$swe )
 
@@ -74,6 +81,7 @@ tempDataSyncS$flowLS[is.na(tempDataSyncS$flowLS)] <- 0
 
 # doY as an integer  
 tempDataSyncS$dOYInt <- as.numeric(strftime(tempDataSyncS$date, format = "%j"))
+tempDataSync$dOYS <-  (tempDataSync$dOY-mean(tempDataSync$dOY, na.rm=TRUE)) / sd(tempDataSync$dOY, na.rm=TRUE)
 
 # index for testing trend across years-not used in the end
 tempDataSyncS$dOYYear <- ( tempDataSyncS$year - min(tempDataSyncS$year) + 1 ) * 365 +
@@ -110,9 +118,9 @@ ggplot(tempDataSyncS,aes(dOY,temp))+
   geom_line(aes(color=factor(year)))+
   facet_wrap(~site)
 
-ggplot(tempDataSyncS,aes(dOY,swe0))+
-  geom_point()+
-  facet_wrap(~year)
+#ggplot(tempDataSyncS,aes(dOY,swe0))+
+#  geom_point()+
+#  facet_wrap(~year)
 
 ```
 
@@ -126,17 +134,10 @@ tempDataSyncS <- filter(tempDataSyncS
                         )#'MAUSGS_WEST_BROOK')
 
 
-tempDataSyncS$rowNum <- 1:dim(tempDataSyncS)[1]
+tempDataSyncS <- indexDeployments( data.frame(tempDataSyncS) )
+firstObsRows <- createFirstRows(tempDataSyncS)
+evalRows <- createEvalRows(tempDataSyncS)
 
-firstObsRows <- tempDataSyncS %>%
-                  group_by(river,year) %>%
-                  filter(date == min(date))%>%
-                  select(rowNum)
-
-evalRows <- tempDataSyncS %>%
-                  group_by(river,year) %>%
-                  filter(date != min(date))%>%
-                  select(rowNum)
 
 save( tempDataSyncS, file = paste0(dataLocalDir,'tempDataSyncSUsed.RData'))
 ```
@@ -175,8 +176,9 @@ data.fixed <- data.frame(intercept = 1
         #                 ,river2Flow = tempDataSyncS$river2 * tempDataSyncS$flowLS
         #                 ,river3Flow = tempDataSyncS$river3 * tempDataSyncS$flowLS
 
-                   #      ,imp = tempDataSyncS$ImpoundmentsAllSqKM
-                         ,swe = tempDataSyncS$swe0   
+                     #     ,imp = tempDataSyncS$ImpoundmentsAllSqKM
+                     #     ,dA = tempDataSyncS$dA
+                      #   ,swe = tempDataSyncS$swe0   
          #                ,sweFlow = tempDataSyncS$swe0 * tempDataSyncS$flowLS
 
 #                          ,dOYYear0 = tempDataSyncS$dOYYear * tempDataSyncS$river0
@@ -207,7 +209,7 @@ monitor.params <- c("residuals",
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
 
-system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 5000, n.it = 1000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
+system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 100, n.it = 100, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
 
 save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
 
@@ -223,11 +225,11 @@ for(i in 1:length(tempDataSyncS$temp)) {
   tempDataSyncS$pred.wb[i] <- mean(huc.mat[ , paste0("stream.mu[", i, "]")])
 }
 
-rmseBy <- 
-  tempDataSyncS %>%
-  group_by( year,riverOrdered ) %>%
-  summarise( rmse = rmse(resid.wb) ) %>%
-  dcast(year~riverOrdered)
+  rmseBy <- 
+    tempDataSyncS %>%
+    group_by( year,riverOrdered ) %>%
+    summarise( rmse = rmse( resid.wb ) ) %>%
+    dcast(year~riverOrdered)
 
 means <- ggs.wb %>%
   group_by(Parameter)%>%
@@ -291,18 +293,19 @@ g + geom_point(aes(color=factor(year)),alpha = 0.3) + geom_smooth() + theme_bw()
     theme_bw() +
     facet_grid(year~riverOrdered)
 
-yearPlot <- 2010
+yearPlot <- 2008
 ggplot(tempDataSyncS[
-                     tempDataSyncS$year==yearPlot
+                     tempDataSyncS$year %in% yearPlot
    #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
                      #  tempDataSyncS$river == 'WB JIMMY'
                      ,], aes(dOY, pred.wb)) + 
-  geom_point(aes(dOY,temp),color='red')+
-  geom_line(aes(dOY,temp),color='red')+
-  geom_line(aes(dOY,(airTemp+4)*5),color='blue')+
+  geom_point(aes(dOY,temp),color='blue')+
+  geom_line(aes(dOY,temp),color='blue')+
+  geom_line(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% yearPlot,])+
+  geom_point(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% yearPlot,])+
  # geom_line(aes(dOY,pred),data=predCubic[predCubic$year==yearPlot-2005,])+
  #  geom_line(aes(dOY,pred,color=factor(year)),data=predCubic)+
-  geom_point() +
+  geom_point(color='red') +
   facet_wrap(~riverOrdered)
 
 
@@ -337,10 +340,15 @@ acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", m
 ```{r cross-validation}
 #assumes code has been run up to the model call in 'run Jags model' chunk
 
-y <- data.frame(year=unique(tempDataSyncS$year))
-years <- arrange(y,year)
+years <- data.frame(year=unique(tempDataSyncS$year)) %>%
+           arrange(.,year)
 
-cVSummary  <- predictSummary <- list()
+cVSummary <- predictSummary <- list()
+rm(rmseByOut)
+rmseByOut <- NA
+
+dOYKeep <- 175:225
+#dOYKeep <- 1:115
 
 # loop over years
 for ( i in 1:nrow(years) ){
@@ -349,12 +357,18 @@ for ( i in 1:nrow(years) ){
   print(c(i,y))
 
   dat <- tempDataSyncS
-  dat$temp[ dat$year %in% y ] <- NA
+  dat$temp[ dat$year %in% y 
+            & dat$dOYInt %!in% dOYKeep   
+            ] <- NA
   
-  system.time(M.wb <- modelRegionalTempWB(dat,
+dat <- indexDeployments( data.frame(dat) )
+firstObsRows <- createFirstRows(dat)
+evalRows <- createEvalRows(dat)
+  
+  system.time(M.wb <- modelRegionalTempWB(dat, firstObsRows, evalRows,
                                           data.fixed=data.fixed, 
                                           data.random.years=data.random.years, 
-                                          n.burn = 500, n.it = 1000, n.thin = 5, nc = 3,
+                                          n.burn = 100, n.it = 100, n.thin = 5, nc = 3,
                                           coda = coda.tf, param.list = monitor.params))
   
   save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidate",y,".RData"))
@@ -367,10 +381,10 @@ for ( i in 1:nrow(years) ){
   tempDataSyncS$resid.wb <- NA
   tempDataSyncS$pred.wb <- NA
   
-  for(i in 1:length(tempDataSyncS$temp)) {
+  for(ii in 1:length(tempDataSyncS$temp)) {
     # these resids are very small because the pred ~ obs
-    tempDataSyncS$resid.wb[i] <- mean(huc.mat[ , paste0("residuals[", i, "]")])
-    tempDataSyncS$pred.wb[i] <- mean(huc.mat[ , paste0("stream.mu[", i, "]")])
+    tempDataSyncS$resid.wb[ii] <- mean(huc.mat[ , paste0("residuals[", ii, "]")])
+    tempDataSyncS$pred.wb[ii] <- mean(huc.mat[ , paste0("stream.mu[", ii, "]")])
   }
 
   # residuals based on predicted temps and acutal observed temps ( including the temps left out )
@@ -384,18 +398,40 @@ for ( i in 1:nrow(years) ){
     group_by( year,riverOrdered ) %>%
     summarise( rmse = rmse( resid ) ) %>%
     dcast(year~riverOrdered)
-#     #group_by(year) %>%
-#     rowwise() %>%
-#     mutate( rowMean = mean(.,na.rm=T) ) 
-  
+
   print(rmseBy)  
 
   cVSummary[[i]] <- rmseBy
   predictSummary[[i]] <- data.frame( yearOut = y, pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid )
+  
+  rmseByOut <- rbind( rmseByOut, rmseBy[rmseBy$year == y, ] )
 
-  beep(10)
+  #beep(10)
 
  } 
+
+save( rmseByOut,cVSummary,predictSummary, file = paste0(dataLocalDir,'validation.RData'))
+
+yearPlot <- 2008:2012
+ggplot(tempDataSyncS[
+                     tempDataSyncS$year %in% yearPlot
+   #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
+                     #  tempDataSyncS$river == 'WB JIMMY'
+                     ,], aes(dOY, pred.wb)) + 
+  geom_point(aes(dOY,temp),color='blue')+
+  geom_line(aes(dOY,temp),color='blue')+
+  geom_line(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% yearPlot,])+
+  geom_point(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% yearPlot,])+
+ # geom_line(aes(dOY,pred),data=predCubic[predCubic$year==yearPlot-2005,])+
+ #  geom_line(aes(dOY,pred,color=factor(year)),data=predCubic)+
+  geom_point(color='red') +
+#  geom_point( aes(dOY,0), color='green',data=dat[dat$year %in% yearPlot & !is.na(dat$temp),] ) +
+  geom_point( aes(dOY,0), color='darkgreen',data=dat[dat$year %in% yearPlot & 
+                                                     dat$rowNum %in% evalRows$rowNum,]  ) +
+  facet_grid(year~riverOrdered)
+
+
+
 
   beep()
 
