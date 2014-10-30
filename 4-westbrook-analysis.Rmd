@@ -343,54 +343,44 @@ acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", m
 years <- data.frame(year=unique(tempDataSyncS$year)) %>%
            arrange(.,year)
 
-cVSummary <- predictSummary <- ggObsPred <- list()
-rm(rmseByOut)
-rmseByOut <- NA
+#years=data.frame(year=1997:2000)
 
-dOYKeep <- 1:366
-dOYKeep <- 1:165
+predictSummary <- ggObsPred <- list()
+rm(rmseByOut,rmseByOutAll)
+rmseByOut <- rmseByOutAll <- NA
+
+minDOY <- 185
+maxDOY <- 210
+dOYKeep <- minDOY:maxDOY
 
 # loop over years
 # last i, is all data, the baseline
-for ( i in 1:( nrow(years) + 1 ) ){
+for ( i in 1:( nrow(years) + 0 ) ){
   
   y <- years$year[i]
   print(c(i,y))
 
   dat <- tempDataSyncS
+  dat$temp[ dat$year %in% y 
+            & dat$dOYInt %!in% dOYKeep   
+          ] <- NA
   
-  if( i < (nrow(years) + 1) ){
-    dat$temp[ dat$year %in% y 
-              & dat$dOYInt %!in% dOYKeep   
-              ] <- NA
-  }
   
   dat <- indexDeployments( data.frame(dat) )
   firstObsRows <- createFirstRows(dat)
   evalRows <- createEvalRows(dat)
   
-  system.time(M.wb <- modelRegionalTempWB(dat, firstObsRows, evalRows,
+  #Don't do any estimation if there are no evalRows for this year
+  if( length(intersect( dat[ dat$year == y,'rowNum' ],evalRows ) ) > 0 ){
+    
+  print( system.time(M.wb <- modelRegionalTempWB(dat, firstObsRows, evalRows,
                                           data.fixed=data.fixed, 
                                           data.random.years=data.random.years, 
                                           n.burn = 100, n.it = 100, n.thin = 5, nc = 3,
-                                          coda = coda.tf, param.list = monitor.params))
+                                          coda = coda.tf, param.list = monitor.params)) )
   
   save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidate",y,".RData"))
   
-  #rm(ggs.wb)
-  #ggs.wb <- ggs(M.wb)
-  #gc() # get rid of ggs mess - may not be necessary on a pc
-  
-#   huc.mat <- as.matrix(M.wb)
-#   tempDataSyncS$resid.wbLoop <- NA
-#   tempDataSyncS$pred.wbLoop <- NA
-#   
-#   for(ii in 1:length(tempDataSyncS$temp)) {
-#     # these resids are very small because the pred ~ obs
-#     tempDataSyncS$resid.wbLoop[ii] <- mean(huc.mat[ , paste0("residuals[", ii, "]")])
-#     tempDataSyncS$pred.wbLoop[ii] <- mean(huc.mat[ , paste0("stream.mu[", ii, "]")])
-#   }
-
   # add mean residuals and predicted values from the jags run
   # this replaces Dan's loop. It's a lot more code but a lot faster.
   tempDataSyncS <- addStreamMuResid(M.wb,tempDataSyncS)
@@ -405,15 +395,18 @@ for ( i in 1:( nrow(years) + 1 ) ){
     tempDataSyncS %>%
     group_by( year,riverOrdered ) %>%
     summarise( rmse = rmse( resid ) ) %>%
-    dcast( year~riverOrdered )
+    mutate( yearIn = years$year[i],
+            minDOY = minDOY,
+            maxDOY = maxDOY)
 
-  print(rmseBy)  
+  print( rmseBy %>% dcast( year~riverOrdered, value.var="rmse" ) )  
 
-  cVSummary[[i]] <- rmseBy
+  rmseByOutAll <- rbind(rmseByOutAll,rmseBy)
+
   predictSummary[[i]] <- data.frame( yearOut = y, pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid )
 
-(
-ggObsPred[[i]] <- 
+
+  ggObsPred[[i]] <- 
   ggplot(tempDataSyncS
         [tempDataSyncS$year %in% y,]
          , aes(dOY, pred.wb)) + 
@@ -424,17 +417,58 @@ ggObsPred[[i]] <-
     geom_point(color='red') +
     geom_point( aes(dOY,0), color='darkgreen',data=dat[dat$year %in% y & 
                                                        dat$rowNum %in% evalRows,]  ) +
+    ggtitle(paste('Year =',y)) +
     facet_wrap(~riverOrdered)
-)  
+
+  print( ggObsPred[[i]] )
+
   rmseByOut <- rbind( rmseByOut, rmseBy[rmseBy$year == y, ] )
 
   #beep(10) this messes up the looping
-
+  } # bracket for if statement checking intersection of evalRows and rowNum by year
  } 
 
-save( rmseByOut,cVSummary,predictSummary,ggObsPred, file = paste0(dataLocalDir,'validation.RData'))
+save( rmseByOut,rmseByOutAll,predictSummary,ggObsPred, file = paste0(dataLocalDir,'validation.RData'))
 
 beep()
+
+
+#########################################################################################
+#Base case using all data for comparison
+  print( system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows,
+                                          data.fixed=data.fixed, 
+                                          data.random.years=data.random.years, 
+                                          n.burn = 100, n.it = 100, n.thin = 5, nc = 3,
+                                          coda = coda.tf, param.list = monitor.params)) )
+  
+  save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidateAllData.RData"))
+  
+  # add mean residuals and predicted values from the jags run
+  # this replaces Dan's loop. It's a lot more code but a lot faster.
+  tempDataSyncS <- addStreamMuResid(M.wb,tempDataSyncS)
+
+  # residuals based on predicted temps and acutal observed temps ( including the temps left out )
+  tempDataSyncS$resid <- tempDataSyncS$temp - tempDataSyncS$pred.wb
+
+  #rm(rmse)
+  print(c( rmse(tempDataSyncS$resid),rmse(tempDataSyncS$resid.wb)) )
+  
+  rmseByAll <- 
+    tempDataSyncS %>%
+    group_by( year,riverOrdered ) %>%
+    summarise( rmse = rmse( resid ) ) %>%
+    mutate( yearIn = years$year[i],
+            minDOY = minDOY,
+            maxDOY = maxDOY)
+
+  print( rmseByAll %>% dcast( year~riverOrdered, value.var="rmse" ) ) 
+
+beep(10)
+#########################################################################################
+
+# Look at deviance from base case
+
+
 
 
 ```
