@@ -86,6 +86,9 @@ tempDataSync$dOYS <-  (tempDataSync$dOY-mean(tempDataSync$dOY, na.rm=TRUE)) / sd
 # index for testing trend across years-not used in the end
 tempDataSyncS$dOYYear <- ( tempDataSyncS$year - min(tempDataSyncS$year) + 1 ) * 365 +
                            tempDataSyncS$dOYInt - 3000 #3000 to center values
+
+tempDataSyncS <- arrange( tempDataSyncS, riverOrdered,date )
+tempDataSyncS$rowNum <- 1:nrow(tempDataSyncS)
 ```
 
 ```{r dummy site variable}
@@ -132,12 +135,6 @@ tempDataSyncS <- filter(tempDataSyncS
                         ,site != 'MAUSGS_SEC_30_DL'
                         #,site == 'MAUSGS_WB_MITCHELL' 
                         )#'MAUSGS_WEST_BROOK')
-
-
-tempDataSyncS <- indexDeployments( data.frame(tempDataSyncS) )
-firstObsRows <- createFirstRows(tempDataSyncS)
-evalRows <- createEvalRows(tempDataSyncS)
-
 
 save( tempDataSyncS, file = paste0(dataLocalDir,'tempDataSyncSUsed.RData'))
 ```
@@ -209,6 +206,10 @@ monitor.params <- c("residuals",
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
 
+tempDataSyncS <- indexDeployments( data.frame(tempDataSyncS) )
+firstObsRows <- createFirstRows(tempDataSyncS)
+evalRows <- createEvalRows(tempDataSyncS)
+
 system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 100, n.it = 100, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
 
 save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
@@ -217,13 +218,12 @@ rm(ggs.wb)
 ggs.wb <- ggs(M.wb)
 gc() # get rid of ggs mess - may not be necessary on a pc
 
+
+  # add mean residuals and predicted values from the jags run
+  # this replaces Dan's loop. It's a lot more code but a lot faster.
+  tempDataSyncS <- addStreamMuResid(M.wb,tempDataSyncS)
+
 huc.mat <- as.matrix(M.wb)
-tempDataSyncS$resid.wb <- NA
-tempDataSyncS$pred.wb <- NA
-for(i in 1:length(tempDataSyncS$temp)) {
-  tempDataSyncS$resid.wb[i] <- mean(huc.mat[ , paste0("residuals[", i, "]")])
-  tempDataSyncS$pred.wb[i] <- mean(huc.mat[ , paste0("stream.mu[", i, "]")])
-}
 
   rmseBy <- 
     tempDataSyncS %>%
@@ -343,27 +343,31 @@ acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", m
 years <- data.frame(year=unique(tempDataSyncS$year)) %>%
            arrange(.,year)
 
-cVSummary <- predictSummary <- list()
+cVSummary <- predictSummary <- ggObsPred <- list()
 rm(rmseByOut)
 rmseByOut <- NA
 
-dOYKeep <- 175:225
-#dOYKeep <- 1:115
+dOYKeep <- 1:366
+dOYKeep <- 1:165
 
 # loop over years
-for ( i in 1:nrow(years) ){
+# last i, is all data, the baseline
+for ( i in 1:( nrow(years) + 1 ) ){
   
   y <- years$year[i]
   print(c(i,y))
 
   dat <- tempDataSyncS
-  dat$temp[ dat$year %in% y 
-            & dat$dOYInt %!in% dOYKeep   
-            ] <- NA
   
-dat <- indexDeployments( data.frame(dat) )
-firstObsRows <- createFirstRows(dat)
-evalRows <- createEvalRows(dat)
+  if( i < (nrow(years) + 1) ){
+    dat$temp[ dat$year %in% y 
+              & dat$dOYInt %!in% dOYKeep   
+              ] <- NA
+  }
+  
+  dat <- indexDeployments( data.frame(dat) )
+  firstObsRows <- createFirstRows(dat)
+  evalRows <- createEvalRows(dat)
   
   system.time(M.wb <- modelRegionalTempWB(dat, firstObsRows, evalRows,
                                           data.fixed=data.fixed, 
@@ -377,15 +381,19 @@ evalRows <- createEvalRows(dat)
   #ggs.wb <- ggs(M.wb)
   #gc() # get rid of ggs mess - may not be necessary on a pc
   
-  huc.mat <- as.matrix(M.wb)
-  tempDataSyncS$resid.wb <- NA
-  tempDataSyncS$pred.wb <- NA
-  
-  for(ii in 1:length(tempDataSyncS$temp)) {
-    # these resids are very small because the pred ~ obs
-    tempDataSyncS$resid.wb[ii] <- mean(huc.mat[ , paste0("residuals[", ii, "]")])
-    tempDataSyncS$pred.wb[ii] <- mean(huc.mat[ , paste0("stream.mu[", ii, "]")])
-  }
+#   huc.mat <- as.matrix(M.wb)
+#   tempDataSyncS$resid.wbLoop <- NA
+#   tempDataSyncS$pred.wbLoop <- NA
+#   
+#   for(ii in 1:length(tempDataSyncS$temp)) {
+#     # these resids are very small because the pred ~ obs
+#     tempDataSyncS$resid.wbLoop[ii] <- mean(huc.mat[ , paste0("residuals[", ii, "]")])
+#     tempDataSyncS$pred.wbLoop[ii] <- mean(huc.mat[ , paste0("stream.mu[", ii, "]")])
+#   }
+
+  # add mean residuals and predicted values from the jags run
+  # this replaces Dan's loop. It's a lot more code but a lot faster.
+  tempDataSyncS <- addStreamMuResid(M.wb,tempDataSyncS)
 
   # residuals based on predicted temps and acutal observed temps ( including the temps left out )
   tempDataSyncS$resid <- tempDataSyncS$temp - tempDataSyncS$pred.wb
@@ -397,43 +405,36 @@ evalRows <- createEvalRows(dat)
     tempDataSyncS %>%
     group_by( year,riverOrdered ) %>%
     summarise( rmse = rmse( resid ) ) %>%
-    dcast(year~riverOrdered)
+    dcast( year~riverOrdered )
 
   print(rmseBy)  
 
   cVSummary[[i]] <- rmseBy
   predictSummary[[i]] <- data.frame( yearOut = y, pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid )
-  
+
+(
+ggObsPred[[i]] <- 
+  ggplot(tempDataSyncS
+        [tempDataSyncS$year %in% y,]
+         , aes(dOY, pred.wb)) + 
+    geom_point(aes(dOY,temp),color='blue')+
+    geom_line(aes(dOY,temp),color='blue')+
+    geom_line(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% y,])+
+    geom_point(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% y,])+
+    geom_point(color='red') +
+    geom_point( aes(dOY,0), color='darkgreen',data=dat[dat$year %in% y & 
+                                                       dat$rowNum %in% evalRows,]  ) +
+    facet_wrap(~riverOrdered)
+)  
   rmseByOut <- rbind( rmseByOut, rmseBy[rmseBy$year == y, ] )
 
-  #beep(10)
+  #beep(10) this messes up the looping
 
  } 
 
-save( rmseByOut,cVSummary,predictSummary, file = paste0(dataLocalDir,'validation.RData'))
+save( rmseByOut,cVSummary,predictSummary,ggObsPred, file = paste0(dataLocalDir,'validation.RData'))
 
-yearPlot <- 2008:2012
-ggplot(tempDataSyncS[
-                     tempDataSyncS$year %in% yearPlot
-   #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
-                     #  tempDataSyncS$river == 'WB JIMMY'
-                     ,], aes(dOY, pred.wb)) + 
-  geom_point(aes(dOY,temp),color='blue')+
-  geom_line(aes(dOY,temp),color='blue')+
-  geom_line(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% yearPlot,])+
-  geom_point(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% yearPlot,])+
- # geom_line(aes(dOY,pred),data=predCubic[predCubic$year==yearPlot-2005,])+
- #  geom_line(aes(dOY,pred,color=factor(year)),data=predCubic)+
-  geom_point(color='red') +
-#  geom_point( aes(dOY,0), color='green',data=dat[dat$year %in% yearPlot & !is.na(dat$temp),] ) +
-  geom_point( aes(dOY,0), color='darkgreen',data=dat[dat$year %in% yearPlot & 
-                                                     dat$rowNum %in% evalRows$rowNum,]  ) +
-  facet_grid(year~riverOrdered)
-
-
-
-
-  beep()
+beep()
 
 
 ```
