@@ -88,7 +88,7 @@ tempDataSyncS$dOYYear <- ( tempDataSyncS$year - min(tempDataSyncS$year) + 1 ) * 
                            tempDataSyncS$dOYInt - 3000 #3000 to center values
 
 tempDataSyncS <- arrange( tempDataSyncS, riverOrdered,date )
-tempDataSyncS$rowNum <- 1:nrow(tempDataSyncS)
+
 ```
 
 ```{r dummy site variable}
@@ -135,6 +135,8 @@ tempDataSyncS <- filter(tempDataSyncS
                         ,site != 'MAUSGS_SEC_30_DL'
                         #,site == 'MAUSGS_WB_MITCHELL' 
                         )#'MAUSGS_WEST_BROOK')
+
+tempDataSyncS$rowNum <- 1:nrow(tempDataSyncS)
 
 save( tempDataSyncS, file = paste0(dataLocalDir,'tempDataSyncSUsed.RData'))
 ```
@@ -337,8 +339,12 @@ acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", m
 
 ```
 
-```{r cross-validation}
+```{r cross-validation - 5 scenarios}
 #assumes code has been run up to the model call in 'run Jags model' chunk
+
+n.burn <- 100
+n.it <- 100
+n.thin <- 2
 
 years <- data.frame(year=unique(tempDataSyncS$year)) %>%
            arrange(.,year)
@@ -349,16 +355,71 @@ predictSummary <- ggObsPred <- list()
 rm(rmseByOut,rmseByOutAll)
 rmseByOut <- rmseByOutAll <- NA
 
-minDOY <- 185
-maxDOY <- 210
-dOYKeep <- minDOY:maxDOY
+# scenarios to test. set up  different sets of days to keep
+nDays <- 30 # num of days to keep
+
+loDOY  <- quantile(tempDataSyncS$dOYInt,0.025)
+mDOY  <- quantile(tempDataSyncS$dOYInt,0.5)
+hiDOY  <- quantile(tempDataSyncS$dOYInt,0.975)
+
+rm(dOYKeep1); dOYKeep1 <- matrix(NA,26,nDays*10)
+
+dOYKeep1[1,1:length(100:(100+nDays-1) )] <- 100:(100+nDays-1) 
+dOYKeep1[2,1:length(270:(270+nDays-1))] <- 270:(270+nDays-1)
+
+# random picks
+dOYKeep1[3,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
+dOYKeep1[4,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
+dOYKeep1[5,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
+
+# pairs of random picks
+randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
+dOYKeep1[6,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
+randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
+dOYKeep1[7,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
+randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
+dOYKeep1[8,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
+
+#spread from the middle in both directions
+dOYKeep1[9,1:length((mDOY-nDays/2):(mDOY+nDays/2-1)) ] <- (mDOY-nDays/2):(mDOY+nDays/2-1)
+dOYKeep1[10,1:length((mDOY-nDays*1):(mDOY+nDays*1-1))] <- (mDOY-nDays*1):(mDOY+nDays*1-1)
+dOYKeep1[11,1:length((mDOY-nDays*2):(mDOY+nDays*2-1))] <- (mDOY-nDays*2):(mDOY+nDays*2-1)
+dOYKeep1[12,1:length((mDOY-nDays*3):(mDOY+nDays*3-1))] <- (mDOY-nDays*3):(mDOY+nDays*3-1)
+dOYKeep1[13,1:length((mDOY-nDays*4):(mDOY+nDays*4-1))] <- (mDOY-nDays*4):(mDOY+nDays*4-1)
+dOYKeep1[14,1:length((mDOY-nDays*5):(mDOY+nDays*5-1))] <- (mDOY-nDays*5):(mDOY+nDays*5-1)
+
+#spread from the middle to the right
+dOYKeep1[15,1:length((mDOY):(mDOY+nDays/2-1)) ] <- (mDOY):(mDOY+nDays/2-1)
+dOYKeep1[16,1:length((mDOY):(mDOY+nDays*1-1)) ] <- (mDOY):(mDOY+nDays*1-1)
+dOYKeep1[17,1:length((mDOY):(mDOY+nDays*2-1)) ] <- (mDOY):(mDOY+nDays*2-1)
+dOYKeep1[18,1:length((mDOY):(mDOY+nDays*3-1)) ] <- (mDOY):(mDOY+nDays*3-1)
+dOYKeep1[19,1:length((mDOY):(mDOY+nDays*4-1)) ] <- (mDOY):(mDOY+nDays*4-1)
+dOYKeep1[20,1:length((mDOY):(mDOY+nDays*5-1)) ] <- (mDOY):(mDOY+nDays*5-1)
+
+#spread from the middle to the left
+dOYKeep1[21,1:length((mDOY-nDays/2):(mDOY))] <- (mDOY-nDays/2):(mDOY)
+dOYKeep1[22,1:length((mDOY-nDays*1):(mDOY))] <- (mDOY-nDays*1):(mDOY)
+dOYKeep1[23,1:length((mDOY-nDays*2):(mDOY))] <- (mDOY-nDays*2):(mDOY)
+dOYKeep1[24,1:length((mDOY-nDays*3):(mDOY))] <- (mDOY-nDays*3):(mDOY)
+dOYKeep1[25,1:length((mDOY-nDays*4):(mDOY))] <- (mDOY-nDays*4):(mDOY)
+dOYKeep1[26,1:length((mDOY-nDays*5):(mDOY))] <- (mDOY-nDays*5):(mDOY)
+
+inc <- 0
+
+# loop through the scenarios
+for ( k in 9:nrow( dOYKeep1 ) ){
+
+dOYKeep <- dOYKeep1[ k, ] 
+dOYKeep <- dOYKeep[ !is.na( dOYKeep ) ]
+minDOY <- min(dOYKeep)
+maxDOY <- max(dOYKeep)
 
 # loop over years
-# last i, is all data, the baseline
 for ( i in 1:( nrow(years) + 0 ) ){
   
+  inc <- inc + 1
   y <- years$year[i]
-  print(c(i,y))
+  print(c(k,i,y))
 
   dat <- tempDataSyncS
   dat$temp[ dat$year %in% y 
@@ -370,16 +431,19 @@ for ( i in 1:( nrow(years) + 0 ) ){
   firstObsRows <- createFirstRows(dat)
   evalRows <- createEvalRows(dat)
   
+  dat$eval <- dat$rowNum %in% evalRows
+  dat$first <- dat$rowNum %in% firstObsRows
+  
   #Don't do any estimation if there are no evalRows for this year
   if( length(intersect( dat[ dat$year == y,'rowNum' ],evalRows ) ) > 0 ){
     
-  print( system.time(M.wb <- modelRegionalTempWB(dat, firstObsRows, evalRows,
+    print( system.time(M.wb <- modelRegionalTempWB(dat, firstObsRows, evalRows,
                                           data.fixed=data.fixed, 
                                           data.random.years=data.random.years, 
-                                          n.burn = 100, n.it = 100, n.thin = 5, nc = 3,
+                                          n.burn = n.burn, n.it = n.it, n.thin = n.thin, nc = 3,
                                           coda = coda.tf, param.list = monitor.params)) )
   
-  save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidate",y,".RData"))
+    save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidate_",k,"_",y,".RData"))
   
   # add mean residuals and predicted values from the jags run
   # this replaces Dan's loop. It's a lot more code but a lot faster.
@@ -395,7 +459,8 @@ for ( i in 1:( nrow(years) + 0 ) ){
     tempDataSyncS %>%
     group_by( year,riverOrdered ) %>%
     summarise( rmse = rmse( resid ) ) %>%
-    mutate( yearIn = years$year[i],
+    mutate( scenario = k,
+            yearIn = years$year[i],
             minDOY = minDOY,
             maxDOY = maxDOY)
 
@@ -403,10 +468,10 @@ for ( i in 1:( nrow(years) + 0 ) ){
 
   rmseByOutAll <- rbind(rmseByOutAll,rmseBy)
 
-  predictSummary[[i]] <- data.frame( yearOut = y, pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid )
+  predictSummary[[inc]] <- data.frame( scenario = k, yearOut = y, pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid )
 
 
-  ggObsPred[[i]] <- 
+  ggObsPred[[inc]] <- 
   ggplot(tempDataSyncS
         [tempDataSyncS$year %in% y,]
          , aes(dOY, pred.wb)) + 
@@ -417,17 +482,17 @@ for ( i in 1:( nrow(years) + 0 ) ){
     geom_point(color='red') +
     geom_point( aes(dOY,0), color='darkgreen',data=dat[dat$year %in% y & 
                                                        dat$rowNum %in% evalRows,]  ) +
-    ggtitle(paste('Year =',y)) +
+    ggtitle(paste('Scenario = ',k,' Year =',y)) +
     facet_wrap(~riverOrdered)
 
-  print( ggObsPred[[i]] )
+  print( ggObsPred[[inc]] )
 
   rmseByOut <- rbind( rmseByOut, rmseBy[rmseBy$year == y, ] )
 
   #beep(10) this messes up the looping
   } # bracket for if statement checking intersection of evalRows and rowNum by year
- } 
-
+ } # year bracket 
+} #k bracket
 save( rmseByOut,rmseByOutAll,predictSummary,ggObsPred, file = paste0(dataLocalDir,'validation.RData'))
 
 beep()
@@ -435,10 +500,16 @@ beep()
 
 #########################################################################################
 #Base case using all data for comparison
+# this gets run separately from the looping above
+
+  tempDataSyncS <- indexDeployments( data.frame(tempDataSyncS) )
+  firstObsRows <- createFirstRows(tempDataSyncS)
+  evalRows <- createEvalRows(tempDataSyncS)
+
   print( system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows,
                                           data.fixed=data.fixed, 
                                           data.random.years=data.random.years, 
-                                          n.burn = 100, n.it = 100, n.thin = 5, nc = 3,
+                                          n.burn = n.burn, n.it = n.it, n.thin = n.thin, nc = 3,
                                           coda = coda.tf, param.list = monitor.params)) )
   
   save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidateAllData.RData"))
@@ -453,23 +524,57 @@ beep()
   #rm(rmse)
   print(c( rmse(tempDataSyncS$resid),rmse(tempDataSyncS$resid.wb)) )
   
-  rmseByAll <- 
+  rmseByComplete <- 
     tempDataSyncS %>%
     group_by( year,riverOrdered ) %>%
-    summarise( rmse = rmse( resid ) ) %>%
-    mutate( yearIn = years$year[i],
-            minDOY = minDOY,
-            maxDOY = maxDOY)
+    summarise( rmseComplete = rmse( resid ) )# %>%
+  #  mutate( minDOY = minDOY,
+  #          maxDOY = maxDOY)
 
-  print( rmseByAll %>% dcast( year~riverOrdered, value.var="rmse" ) ) 
+  print( rmseByComplete %>% dcast( year~riverOrdered, value.var="rmseComplete" ) ) 
 
 beep(10)
 #########################################################################################
 
 # Look at deviance from base case
 
+r <- left_join(rmseByOutAll,rmseByComplete)
+r$diff <- r$rmse - r$rmseComplete
+r$incompleteYear <- r$year == r$yearIn
+r$incompleteIndex <- paste(r$minDOY,r$maxDOY,sep='_')
 
+ggplot(r[r$incompleteYear & !is.na(r$riverOrdered),], aes(year,rmse, color=factor(scenario))) +
+  geom_point() + 
+  geom_line() +
+  geom_point(aes(year,rmseComplete),color='black') +
+  facet_wrap(~riverOrdered)
 
+ggplot(r[r$incompleteYear,], aes(year,diff, color=factor(scenario))) +
+  geom_point() + 
+  geom_line() +
+  facet_wrap(~riverOrdered)
+
+r[r$incompleteYear,] %>%
+  group_by( scenario ) %>%
+  summarise( mean = mean( diff, na.rm=T ),
+             sd   =   sd( diff, na.rm=T ),
+             n    =    n(  ) ) 
+
+r[r$incompleteYear,] %>%
+  group_by( riverOrdered,scenario ) %>%
+  summarise( mean = mean( diff, na.rm=T ),
+             sd   =   sd( diff, na.rm=T ),
+             n    =    n(  ) ) %>%
+  ggplot(.,aes(scenario,mean,color=factor(riverOrdered))) +
+    geom_point() + geom_line()
+
+r[r$incompleteYear,] %>%
+  group_by( year,scenario ) %>%
+  summarise( mean = mean( diff, na.rm=T ),
+             sd   =   sd( diff, na.rm=T ),
+             n    =    n(  ) ) %>%
+  ggplot(.,aes(scenario,mean,color=factor(year))) +
+    geom_point() + geom_line()
 
 ```
 
