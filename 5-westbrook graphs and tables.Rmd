@@ -27,7 +27,7 @@ tempDataSync$river[ tempDataSync$site == 'MAUSGS_WB_JIMMY' ] <- 'WB JIMMY'
 tempDataSync$riverOrdered <- factor(tempDataSync$river,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
 
 ggRawJimmy <- 
-ggplot(tempDataSync[tempDataSync$riverOrdered == 'WB JIMMY',],aes(dOY,temp))+
+ggplot(tempDataSync[tempDataSync$riverOrdered == 'WB JIMMY' & tempDataSync$year>2006,],aes(dOY,temp))+
   geom_line(size=0.5)+
   geom_line(aes(dOY,airTemp),color='red',size=0.5)+
   scale_x_continuous("Day of year") +
@@ -35,7 +35,12 @@ ggplot(tempDataSync[tempDataSync$riverOrdered == 'WB JIMMY',],aes(dOY,temp))+
   theme_bw(base_size=25)+
   facet_wrap(~year)
 
-ggsave( file=paste0(graphsDir,'ggRawJimmy.png'), plot=ggRawJimmy, dpi=600 , width=8,height=5, units='in', scale=2 )
+ggsave( file=paste0(graphsDir,'ggRawJimmy.png'), plot=ggRawJimmy, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+
+
+ggplot(tempDataSyncS, aes(dOYInt,temp)) + geom_boxplot(aes(fill=factor(dOYInt))) + facet_wrap(~riverOrdered)
+
 
 ```
 
@@ -48,10 +53,12 @@ obsPred <-
 ggplot(tempDataSyncS[tempDataSyncS$year>2006,], aes(temp, pred.wb)) +
     geom_point(alpha = 0.3) + 
     geom_abline(intercept=0,slope=1) + 
-    theme_bw() +
+    scale_x_continuous( expression(paste("Observed temperature ( ",degree, "C)", sep = ""))) +
+    scale_y_continuous( expression(paste("Predicted temperature ( ",degree, "C)", sep = ""))) +
+    theme_bw(base_size=25) +
     facet_grid(year~riverOrdered)
 
-ggsave( file=paste0(graphsDir,'obsPred.png'), plot=obsPred, dpi=600 , width=8,height=5, units='in', scale=2 )
+ggsave( file=paste0(graphsDir,'obsPred.png'), plot=obsPred, dpi=600, width=8,height=5, units='in', scale=2 )
 
 ```
 
@@ -71,13 +78,57 @@ keepRows <-
 rHat <- unique( ggs_Rhat(ggs.wb[keepRows,])$data )
 
 # table of parameter estimates for MS
-m <- left_join(means,rHat[,c('Parameter','Rhat')])
+m <- left_join( rHat[,c('Parameter','Rhat')], means )
+
+#ggs_caterpillar(ggs.wb[keepRows,])
+m$gt2 <- ifelse( m$mean > 2, 1,0 )
+m$oP <- factor(m$Parameter,levels=rev( c(
+ 'B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]','B.0[7]','B.0[8]','B.0[9]','B.0[10]','B.0[11]','B.0[12]','mu.year[1]','mu.year[2]','mu.year[3]','mu.year[4]','ar1Mean','ar1SD','ar1[1]','ar1[2]','ar1[3]','ar1[4]','mu.year[1]','mu.year[2]','mu.year[3]','mu.year[4]','sigma'
+ ) ), ordered=T)
+
+# without B.year[]
+# do in two parts to simulate a 'break'
+b1 <- 
+ggplot(m[grep("B.year",m$Parameter,invert=T) & !is.na(m$oP),], aes(x = mean, y = oP)) + 
+  geom_point(size = 3) + 
+  geom_segment(aes(x = qLo, xend = qHi, yend = oP), size = 0.5) +
+  geom_segment(aes(x = qLo25, xend = qHi75, yend = oP), size = 1.5) +
+  theme_bw(base_size=25) +
+  scale_x_continuous('        Value',limits=c(-2.7,2)) +
+  scale_y_discrete('Parameter') +
+  geom_vline(xintercept=0) +
+  theme(#axis.text.x = element_text(angle=50),
+        strip.text.x = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_blank(),
+        plot.margin= unit(c(1,0.05,1,1), "lines"))
+ 
+b2 <- 
+ggplot(m[grep("B.year",m$Parameter,invert=T) & !is.na(m$oP),], aes(x = mean, y = oP)) + 
+  geom_point(size = 3) + 
+  geom_segment(aes(x = qLo, xend = qHi, yend = oP), size = 0.5) +
+  geom_segment(aes(x = qLo25, xend = qHi75, yend = oP), size = 1.5) +
+  theme_bw(base_size=25) +
+  scale_x_continuous('',limits=c(14.4,15.6), breaks=c(14.5,15.5)) +
+  scale_y_discrete('') +
+  #facet_grid( ~ gt2, scales='free_x',space='free' ) +
+  theme(axis.text.y = element_blank(),
+        strip.text.x = element_blank(),
+        strip.background = element_blank(),
+        strip.text.y = element_blank(),
+        plot.margin= unit(c(1,1,1,0), "lines"))
+  
+
+betas <- arrangeGrob(b1, b2,ncol=2, widths=c(5,1.5))  
+
+ggsave( file=paste0(graphsDir,'betas.png'), plot=betas, dpi=600, width=5,height=5, units='in', scale=2 )
 
 
-
-
-ggs_caterpillar(ggs.wb[keepRows,])
-
+# B.year[] only
+ggplot(m[grep("B.year",m$Parameter,invert=F),], aes(x = mean, y = reorder(Parameter,mean))) + 
+  geom_point(size = 3) + 
+  geom_segment(aes(x = qLo, xend = qHi, yend = reorder(Parameter,mean)), size = 0.5) +
+  geom_segment(aes(x = qLo25, xend = qHi75, yend = reorder(Parameter,mean)), size = 1.5)
 
 
 ```
@@ -89,9 +140,18 @@ ggs_caterpillar(ggs.wb[keepRows,])
 
 pC <- predCubic(means)
 
-ggCubic <- ggplot(pC$predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.25)
+ggCubic <- 
+  ggplot(pC$predCubic, aes(dOY,pred)) + geom_line(aes(group=factor(year)),size=1.25) +
+    geom_point(aes(maxX,maxY), color='white',data = pC$bY) +
+    scale_x_continuous('Day of year') +
+    scale_y_continuous( expression(paste("Cubic trend effect ( ",degree, "C)", sep = ""))) +
+    theme_bw(base_size=20)
 
-ggCubic + geom_point(aes(maxX,maxY), data = pC$bY)
+ggsave( file=paste0(graphsDir,'ggCubic.png'), plot=ggCubic, dpi=600 , width=6,height=6, units='in' )
+
+
+
+ggCubic + geom_point(aes(maxX,maxY), data = pC$bY) +facet_wrap(~year)
 
 # max temp over years
 ggplot(pC$bY, aes(year,maxY)) + geom_point() + geom_smooth(method="lm")
@@ -118,3 +178,33 @@ summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYMinus1',] ))
 summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus1',] ))
 summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus2',] ))
 ```
+
+```{r plots for cross-validation}
+load( paste0(dataLocalDir, "r.RData"))
+
+ggplot( r[r$incompleteYear & !is.na(r$riverOrdered),], aes(incompleteIndex,diff)) + geom_point()
+
+ggRMSEDOY <- 
+r %>%
+  filter( incompleteYear ) %>%
+  group_by( scenario ) %>%
+    summarise( mean = mean( diff, na.rm=T ),
+               sd   =   sd( diff, na.rm=T ),
+               n    =    n(  ),
+             dOYDiff = min(dOYDiff),
+                  s = unique(s)) %>%
+  filter( !is.na( s ) ) %>%
+  mutate( dOYDiff = ifelse( dOYDiff == -Inf,0, dOYDiff ) ) %>%
+ggplot( . ,aes(dOYDiff,mean,shape=factor(s))) +
+  geom_point( size=4 ) + 
+  geom_smooth(method='lm'
+              #, formula=y~x+I(x^2)
+              ,se=F,aes(linetype=factor(s)),color='black') +
+  scale_x_continuous('Number of days included in estimation') +
+  scale_y_continuous('Difference in RMSE from base case') +
+  theme_bw(base_size=25)
+
+ggsave( file=paste0(graphsDir,'ggRMSEDOY.png'), plot=ggRMSEDOY, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+```
+

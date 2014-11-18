@@ -138,7 +138,7 @@ tempDataSyncS <- filter(tempDataSyncS
 
 tempDataSyncS$rowNum <- 1:nrow(tempDataSyncS)
 
-save( tempDataSyncS, file = paste0(dataLocalDir,'tempDataSyncSUsed.RData'))
+
 ```
 
 
@@ -238,12 +238,16 @@ means <- ggs.wb %>%
   summarise(mean=mean(value),
             sd=sd(value),
             qLo=quantile(value,probs=c(0.025)),
-            qHi=quantile(value,probs=c(0.975))
+            qHi=quantile(value,probs=c(0.975)),
+            qLo25=quantile(value,probs=c(0.25)),
+            qHi75=quantile(value,probs=c(0.75))
             )
 
 save(rmseBy,means,file=paste0(dataLocalDir,'means.RData'))
+save( tempDataSyncS,  file = paste0(dataLocalDir,'tempDataSyncSUsed.RData') )
+save( ggs.wb,  file = paste0(dataLocalDir,'ggs_wb.RData') )
 
-beep()
+#beep()
 ```
 
 
@@ -339,7 +343,7 @@ acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", m
 
 ```
 
-```{r cross-validation - 5 scenarios}
+```{r cross-validation - many scenarios}
 #assumes code has been run up to the model call in 'run Jags model' chunk
 
 n.burn <- 100
@@ -351,18 +355,19 @@ years <- data.frame(year=unique(tempDataSyncS$year)) %>%
 
 #years=data.frame(year=1997:2000)
 
-predictSummary <- ggObsPred <- list()
+ggObsPred <- ggCubic <- list()
 rm(rmseByOut,rmseByOutAll)
-rmseByOut <- rmseByOutAll <- NA
+rmseByOut <- rmseByOutAll <- predictSummary <- NA
 
 # scenarios to test. set up  different sets of days to keep
 nDays <- 30 # num of days to keep
 
-loDOY  <- quantile(tempDataSyncS$dOYInt,0.025)
+loDOY  <- quantile(tempDataSyncS$dOYInt,0.20)
 mDOY  <- quantile(tempDataSyncS$dOYInt,0.5)
-hiDOY  <- quantile(tempDataSyncS$dOYInt,0.975)
+hiDOY  <- quantile(tempDataSyncS$dOYInt,0.80)
 
-rm(dOYKeep1); dOYKeep1 <- matrix(NA,26,nDays*10)
+rm(dOYKeep1); dOYKeep1 <- matrix(NA,27,nDays*10)
+# add 1 row at end to hold as all NAs. this is the case off no obs for a given year
 
 dOYKeep1[1,1:length(100:(100+nDays-1) )] <- 100:(100+nDays-1) 
 dOYKeep1[2,1:length(270:(270+nDays-1))] <- 270:(270+nDays-1)
@@ -381,12 +386,12 @@ randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
 dOYKeep1[8,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
 
 #spread from the middle in both directions
-dOYKeep1[9,1:length((mDOY-nDays/2):(mDOY+nDays/2-1)) ] <- (mDOY-nDays/2):(mDOY+nDays/2-1)
+dOYKeep1[9 ,1:length((mDOY-nDays/2):(mDOY+nDays/2-1))] <- (mDOY-nDays/2):(mDOY+nDays/2-1)
 dOYKeep1[10,1:length((mDOY-nDays*1):(mDOY+nDays*1-1))] <- (mDOY-nDays*1):(mDOY+nDays*1-1)
 dOYKeep1[11,1:length((mDOY-nDays*2):(mDOY+nDays*2-1))] <- (mDOY-nDays*2):(mDOY+nDays*2-1)
 dOYKeep1[12,1:length((mDOY-nDays*3):(mDOY+nDays*3-1))] <- (mDOY-nDays*3):(mDOY+nDays*3-1)
 dOYKeep1[13,1:length((mDOY-nDays*4):(mDOY+nDays*4-1))] <- (mDOY-nDays*4):(mDOY+nDays*4-1)
-dOYKeep1[14,1:length((mDOY-nDays*5):(mDOY+nDays*5-1))] <- (mDOY-nDays*5):(mDOY+nDays*5-1)
+#dOYKeep1[14,1:length((mDOY-nDays*5):(mDOY+nDays*5-1))] <- (mDOY-nDays*5):(mDOY+nDays*5-1)
 
 #spread from the middle to the right
 dOYKeep1[15,1:length((mDOY):(mDOY+nDays/2-1)) ] <- (mDOY):(mDOY+nDays/2-1)
@@ -394,7 +399,7 @@ dOYKeep1[16,1:length((mDOY):(mDOY+nDays*1-1)) ] <- (mDOY):(mDOY+nDays*1-1)
 dOYKeep1[17,1:length((mDOY):(mDOY+nDays*2-1)) ] <- (mDOY):(mDOY+nDays*2-1)
 dOYKeep1[18,1:length((mDOY):(mDOY+nDays*3-1)) ] <- (mDOY):(mDOY+nDays*3-1)
 dOYKeep1[19,1:length((mDOY):(mDOY+nDays*4-1)) ] <- (mDOY):(mDOY+nDays*4-1)
-dOYKeep1[20,1:length((mDOY):(mDOY+nDays*5-1)) ] <- (mDOY):(mDOY+nDays*5-1)
+#dOYKeep1[20,1:length((mDOY):(mDOY+nDays*5-1)) ] <- (mDOY):(mDOY+nDays*5-1)
 
 #spread from the middle to the left
 dOYKeep1[21,1:length((mDOY-nDays/2):(mDOY))] <- (mDOY-nDays/2):(mDOY)
@@ -402,12 +407,15 @@ dOYKeep1[22,1:length((mDOY-nDays*1):(mDOY))] <- (mDOY-nDays*1):(mDOY)
 dOYKeep1[23,1:length((mDOY-nDays*2):(mDOY))] <- (mDOY-nDays*2):(mDOY)
 dOYKeep1[24,1:length((mDOY-nDays*3):(mDOY))] <- (mDOY-nDays*3):(mDOY)
 dOYKeep1[25,1:length((mDOY-nDays*4):(mDOY))] <- (mDOY-nDays*4):(mDOY)
-dOYKeep1[26,1:length((mDOY-nDays*5):(mDOY))] <- (mDOY-nDays*5):(mDOY)
+#dOYKeep1[26,1:length((mDOY-nDays*5):(mDOY))] <- (mDOY-nDays*5):(mDOY)
+
+#dOYKeep1[27,] <- NA
+
 
 inc <- 0
 
 # loop through the scenarios
-for ( k in 9:nrow( dOYKeep1 ) ){
+for ( k in 1:nrow( dOYKeep1 ) ){
 
 dOYKeep <- dOYKeep1[ k, ] 
 dOYKeep <- dOYKeep[ !is.na( dOYKeep ) ]
@@ -419,7 +427,7 @@ for ( i in 1:( nrow(years) + 0 ) ){
   
   inc <- inc + 1
   y <- years$year[i]
-  print(c(k,i,y))
+  print(c(inc,k,i,y))
 
   dat <- tempDataSyncS
   dat$temp[ dat$year %in% y 
@@ -434,8 +442,8 @@ for ( i in 1:( nrow(years) + 0 ) ){
   dat$eval <- dat$rowNum %in% evalRows
   dat$first <- dat$rowNum %in% firstObsRows
   
-  #Don't do any estimation if there are no evalRows for this year
-  if( length(intersect( dat[ dat$year == y,'rowNum' ],evalRows ) ) > 0 ){
+  #Don't do any estimation if there are no firstObsRows for this year
+  if( length(intersect( dat[ dat$year == y,'rowNum' ],firstObsRows ) ) > 0 ){
     
     print( system.time(M.wb <- modelRegionalTempWB(dat, firstObsRows, evalRows,
                                           data.fixed=data.fixed, 
@@ -468,9 +476,22 @@ for ( i in 1:( nrow(years) + 0 ) ){
 
   rmseByOutAll <- rbind(rmseByOutAll,rmseBy)
 
-  predictSummary[[inc]] <- data.frame( scenario = k, yearOut = y, pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid )
+  predictSummary <- rbind( predictSummary, data.frame( scenario = k, yearOut = y, minDOY=minDOY, maxDOY=maxDOY,pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid ) )
 
+  means <- ggs(M.wb) %>%
+    group_by(Parameter)%>%
+    summarise(mean=mean(value),
+              sd=sd(value),
+              qLo=quantile(value,probs=c(0.025)),
+              qHi=quantile(value,probs=c(0.975))
+              )
 
+  pC <- predCubic(means)
+  ggCubic[[inc]] <- ggplot(pC$predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.25)
+   
+  print( ggCubic[[inc]] )
+  
+                           
   ggObsPred[[inc]] <- 
   ggplot(tempDataSyncS
         [tempDataSyncS$year %in% y,]
@@ -480,22 +501,29 @@ for ( i in 1:( nrow(years) + 0 ) ){
     geom_line(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% y,])+
     geom_point(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% y,])+
     geom_point(color='red') +
-    geom_point( aes(dOY,0), color='darkgreen',data=dat[dat$year %in% y & 
-                                                       dat$rowNum %in% evalRows,]  ) +
-    ggtitle(paste('Scenario = ',k,' Year =',y)) +
+
+    ggtitle(paste(inc,' Scenario = ',k,' Year =',y)) +
     facet_wrap(~riverOrdered)
 
+    if( nrow(dat[dat$year %in% y & dat$rowNum %in% evalRows,] ) > 0 ){
+      ggObsPred[[inc]] <- 
+        ggObsPred[[inc]] + 
+          geom_point( aes(dOY,0), color='darkgreen',data=dat[dat$year %in% y & dat$rowNum %in% evalRows,]  ) 
+    }
   print( ggObsPred[[inc]] )
 
-  rmseByOut <- rbind( rmseByOut, rmseBy[rmseBy$year == y, ] )
+  rmseByOut <- rbind( rmseByOut, rmseBy[ rmseBy$year == y, ] )
 
   #beep(10) this messes up the looping
   } # bracket for if statement checking intersection of evalRows and rowNum by year
  } # year bracket 
 } #k bracket
-save( rmseByOut,rmseByOutAll,predictSummary,ggObsPred, file = paste0(dataLocalDir,'validation.RData'))
 
-beep()
+predictSummary <- na.omit(predictSummary)
+
+save( rmseByOut,rmseByOutAll,predictSummary,ggObsPred,ggCubic, file = paste0(dataLocalDir,'validation.RData'))
+
+#beep()
 
 
 #########################################################################################
@@ -533,15 +561,26 @@ beep()
 
   print( rmseByComplete %>% dcast( year~riverOrdered, value.var="rmseComplete" ) ) 
 
-beep(10)
+#beep(10)
 #########################################################################################
 
-# Look at deviance from base case
+```
+
+```{r deviance from base for rmse}
+# Look at deviance in rmse's from base case
 
 r <- left_join(rmseByOutAll,rmseByComplete)
 r$diff <- r$rmse - r$rmseComplete
 r$incompleteYear <- r$year == r$yearIn
 r$incompleteIndex <- paste(r$minDOY,r$maxDOY,sep='_')
+r$dOYDiff <- r$maxDOY - r$minDOY
+
+r$s <- ifelse( r$scenario %in% 9:14, 'middle',
+       ifelse( r$scenario %in% 15:20, 'late',
+       ifelse( r$scenario %in% 21:26, 'early',NA)                 ))
+
+
+save(r, file = paste0(dataLocalDir, "r.RData"))
 
 ggplot(r[r$incompleteYear & !is.na(r$riverOrdered),], aes(year,rmse, color=factor(scenario))) +
   geom_point() + 
@@ -558,7 +597,9 @@ r[r$incompleteYear,] %>%
   group_by( scenario ) %>%
   summarise( mean = mean( diff, na.rm=T ),
              sd   =   sd( diff, na.rm=T ),
-             n    =    n(  ) ) 
+             n    =    n(  ) )  %>%
+  ggplot(.,aes(scenario,mean)) +
+    geom_point() + geom_line()
 
 r[r$incompleteYear,] %>%
   group_by( riverOrdered,scenario ) %>%
@@ -578,7 +619,60 @@ r[r$incompleteYear,] %>%
 
 ```
 
+```{r deviance from base for pred}
+# Look at deviance in pred's from base case
 
+nRuns <- ( nrow(predictSummary)/nrow(tempDataSyncS) )
+predictSummary$rowNum <- rep(1:7113, nRuns)
+
+predictSummary <- left_join(predictSummary, tempDataSyncS[,c('rowNum','year','riverOrdered','dOYInt','pred.wb')], by='rowNum')
+predictSummary$diff <- predictSummary$pred - predictSummary$pred.wb
+
+predictSummary$s <- ifelse( predictSummary$scenario %in% 9:14, 'middle',
+                    ifelse( predictSummary$scenario %in% 15:20, 'late',
+                    ifelse( predictSummary$scenario %in% 21:26, 'early',NA) ))
+
+
+ggS <- ggSByYear <- list()
+ii=0; iii <- 0
+for(rr in c('WEST BROOK', 'WB JIMMY')){
+  for(yy in 1997:2012){
+    for( ss in c('early','middle','late')){
+      dat <- predictSummary[predictSummary$year==predictSummary$yearOut &
+                            predictSummary$riverOrdered == rr &
+                            predictSummary$year == yy &
+                            predictSummary$s == ss,]
+      dat <- na.omit(dat)
+      
+      if( nrow( dat ) > 0 ) {
+      
+      ii=ii+1
+      print(c(ii,rr,yy,ss))
+ggS[[ii]] <- 
+ggplot(dat, aes(dOYInt,diff))+
+  geom_point(aes(color=factor(scenario))) +
+  geom_line(aes(color=factor(scenario))) +
+  scale_colour_hue('clarity') + #h=c(0, 360)) +
+  ggtitle(paste('River = ',rr,'  Scenario = ',ss,'  Year =',yy)) 
+   }
+  }
+
+iii=iii+1
+ggSByYear[[iii]] <- 
+  ggplot(dat, aes(dOYInt, pred.wb)) + 
+    geom_point(aes(dOYInt,pred),color='blue')+
+    geom_line(aes(dOYInt,pred),color='blue')+
+    geom_point(color='red') +
+    ggtitle(paste('River = ',rr,'  Year =',yy)) +
+    facet_wrap(~scenario)
+ }
+}  
+  
+rmseByOut[rmseByOut$yearIn==2001,]
+
+
+
+```
 
 ```{r ending info}
 
