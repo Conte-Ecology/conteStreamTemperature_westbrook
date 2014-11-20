@@ -347,7 +347,7 @@ acf(tempDataSyncS$resid.wb, lag.max = 100, xlab = "Lag", ylab = "Correlation", m
 #assumes code has been run up to the model call in 'run Jags model' chunk
 
 n.burn <- 100
-n.it <- 100
+n.it <- 50
 n.thin <- 2
 
 years <- data.frame(year=unique(tempDataSyncS$year)) %>%
@@ -362,55 +362,65 @@ rmseByOut <- rmseByOutAll <- predictSummary <- NA
 # scenarios to test. set up  different sets of days to keep
 nDays <- 30 # num of days to keep
 
-loDOY  <- quantile(tempDataSyncS$dOYInt,0.20)
-mDOY  <- quantile(tempDataSyncS$dOYInt,0.5)
-hiDOY  <- quantile(tempDataSyncS$dOYInt,0.80)
+loDOY  <- round(quantile(tempDataSyncS$dOYInt,0.15))
+mDOY  <- round(quantile(tempDataSyncS$dOYInt,0.5))
+hiDOY  <- round(quantile(tempDataSyncS$dOYInt,0.85))
 
-rm(dOYKeep1); dOYKeep1 <- matrix(NA,27,nDays*10)
+rm(dOYKeep1); dOYKeep1 <- matrix(NA,28,nDays*10)
 # add 1 row at end to hold as all NAs. this is the case off no obs for a given year
-
-dOYKeep1[1,1:length(100:(100+nDays-1) )] <- 100:(100+nDays-1) 
-dOYKeep1[2,1:length(270:(270+nDays-1))] <- 270:(270+nDays-1)
-
-# random picks
-dOYKeep1[3,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
-dOYKeep1[4,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
-dOYKeep1[5,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
-
-# pairs of random picks
-randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
-dOYKeep1[6,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
-randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
-dOYKeep1[7,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
-randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
-dOYKeep1[8,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
+iD <- 0
+for( iDay in seq(100,280,15) ){
+  iD <- iD+1
+  dOYKeep1[iD,1:length(iDay:(iDay+nDays-1) )] <- iDay:(iDay+nDays-1) 
+  #dOYKeep1[2,1:length(270:(270+nDays-1))] <- 270:(270+nDays-1)
+}
 
 #spread from the middle in both directions
-dOYKeep1[9 ,1:length((mDOY-nDays/2):(mDOY+nDays/2-1))] <- (mDOY-nDays/2):(mDOY+nDays/2-1)
-dOYKeep1[10,1:length((mDOY-nDays*1):(mDOY+nDays*1-1))] <- (mDOY-nDays*1):(mDOY+nDays*1-1)
-dOYKeep1[11,1:length((mDOY-nDays*2):(mDOY+nDays*2-1))] <- (mDOY-nDays*2):(mDOY+nDays*2-1)
-dOYKeep1[12,1:length((mDOY-nDays*3):(mDOY+nDays*3-1))] <- (mDOY-nDays*3):(mDOY+nDays*3-1)
-dOYKeep1[13,1:length((mDOY-nDays*4):(mDOY+nDays*4-1))] <- (mDOY-nDays*4):(mDOY+nDays*4-1)
+dOYKeep1[14,1:length((mDOY-nDays/2):(mDOY+nDays/2-1))] <- (mDOY-nDays/2):(mDOY+nDays/2-1)
+dOYKeep1[15,1:length((mDOY-nDays*1):(mDOY+nDays*1-1))] <- (mDOY-nDays*1):(mDOY+nDays*1-1)
+dOYKeep1[16,1:length((mDOY-nDays*1):(mDOY+nDays*1.5-1))] <- (mDOY-nDays*1):(mDOY+nDays*1.5-1)
+dOYKeep1[17,1:length((mDOY-nDays*2):(mDOY+nDays*2-1))] <- (mDOY-nDays*2):(mDOY+nDays*2-1)
+dOYKeep1[18,1:length((mDOY-nDays*2.5):(mDOY+nDays*2.5-1))] <- (mDOY-nDays*2.5):(mDOY+nDays*2.5-1)
+dOYKeep1[19,1:length((mDOY-nDays*3):(mDOY+nDays*3-1))] <- (mDOY-nDays*3):(mDOY+nDays*3-1)
+dOYKeep1[20,1:length((mDOY-nDays*3.5):(mDOY+nDays*3.5-1))] <- (mDOY-nDays*3.5):(mDOY+nDays*3.5-1)
+dOYKeep1[21,1:length((mDOY-nDays*4):(mDOY+nDays*4-1))] <- (mDOY-nDays*4):(mDOY+nDays*4-1)
+dOYKeep1[22,1:length((mDOY-nDays*4.5):(mDOY+nDays*4.5-1))] <- (mDOY-nDays*4.5):(mDOY+nDays*4.5-1)
+
+# random picks
+dOYKeep1[23,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
+dOYKeep1[24,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
+dOYKeep1[25,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
+dOYKeep1[26,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
+dOYKeep1[27,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
+
+dOYKeep1[28,] <- NA # just as a reminder. No data for the year case
+
+# pairs of random picks
+# randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
+# dOYKeep1[6,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
+# randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
+# dOYKeep1[7,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
+# randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
+# dOYKeep1[8,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
+
+
 #dOYKeep1[14,1:length((mDOY-nDays*5):(mDOY+nDays*5-1))] <- (mDOY-nDays*5):(mDOY+nDays*5-1)
 
-#spread from the middle to the right
-dOYKeep1[15,1:length((mDOY):(mDOY+nDays/2-1)) ] <- (mDOY):(mDOY+nDays/2-1)
-dOYKeep1[16,1:length((mDOY):(mDOY+nDays*1-1)) ] <- (mDOY):(mDOY+nDays*1-1)
-dOYKeep1[17,1:length((mDOY):(mDOY+nDays*2-1)) ] <- (mDOY):(mDOY+nDays*2-1)
-dOYKeep1[18,1:length((mDOY):(mDOY+nDays*3-1)) ] <- (mDOY):(mDOY+nDays*3-1)
-dOYKeep1[19,1:length((mDOY):(mDOY+nDays*4-1)) ] <- (mDOY):(mDOY+nDays*4-1)
-#dOYKeep1[20,1:length((mDOY):(mDOY+nDays*5-1)) ] <- (mDOY):(mDOY+nDays*5-1)
-
-#spread from the middle to the left
-dOYKeep1[21,1:length((mDOY-nDays/2):(mDOY))] <- (mDOY-nDays/2):(mDOY)
-dOYKeep1[22,1:length((mDOY-nDays*1):(mDOY))] <- (mDOY-nDays*1):(mDOY)
-dOYKeep1[23,1:length((mDOY-nDays*2):(mDOY))] <- (mDOY-nDays*2):(mDOY)
-dOYKeep1[24,1:length((mDOY-nDays*3):(mDOY))] <- (mDOY-nDays*3):(mDOY)
-dOYKeep1[25,1:length((mDOY-nDays*4):(mDOY))] <- (mDOY-nDays*4):(mDOY)
-#dOYKeep1[26,1:length((mDOY-nDays*5):(mDOY))] <- (mDOY-nDays*5):(mDOY)
-
-#dOYKeep1[27,] <- NA
-
+# #spread from the middle to the right
+# dOYKeep1[15,1:length((mDOY):(mDOY+nDays/2-1)) ] <- (mDOY):(mDOY+nDays/2-1)
+# dOYKeep1[16,1:length((mDOY):(mDOY+nDays*1-1)) ] <- (mDOY):(mDOY+nDays*1-1)
+# dOYKeep1[17,1:length((mDOY):(mDOY+nDays*2-1)) ] <- (mDOY):(mDOY+nDays*2-1)
+# dOYKeep1[18,1:length((mDOY):(mDOY+nDays*3-1)) ] <- (mDOY):(mDOY+nDays*3-1)
+# dOYKeep1[19,1:length((mDOY):(mDOY+nDays*4-1)) ] <- (mDOY):(mDOY+nDays*4-1)
+# #dOYKeep1[20,1:length((mDOY):(mDOY+nDays*5-1)) ] <- (mDOY):(mDOY+nDays*5-1)
+# 
+# #spread from the middle to the left
+# dOYKeep1[21,1:length((mDOY-nDays/2):(mDOY))] <- (mDOY-nDays/2):(mDOY)
+# dOYKeep1[22,1:length((mDOY-nDays*1):(mDOY))] <- (mDOY-nDays*1):(mDOY)
+# dOYKeep1[23,1:length((mDOY-nDays*2):(mDOY))] <- (mDOY-nDays*2):(mDOY)
+# dOYKeep1[24,1:length((mDOY-nDays*3):(mDOY))] <- (mDOY-nDays*3):(mDOY)
+# dOYKeep1[25,1:length((mDOY-nDays*4):(mDOY))] <- (mDOY-nDays*4):(mDOY)
+# #dOYKeep1[26,1:length((mDOY-nDays*5):(mDOY))] <- (mDOY-nDays*5):(mDOY)
 
 inc <- 0
 
@@ -575,9 +585,10 @@ r$incompleteYear <- r$year == r$yearIn
 r$incompleteIndex <- paste(r$minDOY,r$maxDOY,sep='_')
 r$dOYDiff <- r$maxDOY - r$minDOY
 
-r$s <- ifelse( r$scenario %in% 9:14, 'middle',
-       ifelse( r$scenario %in% 15:20, 'late',
-       ifelse( r$scenario %in% 21:26, 'early',NA)                 ))
+r$s <- ifelse( r$scenario %in% 1:13, '30days',
+       ifelse( r$scenario %in% 14:22, 'middle',
+       ifelse( r$scenario %in% 23:27, '30random', NA )
+       ))
 
 
 save(r, file = paste0(dataLocalDir, "r.RData"))
@@ -628,16 +639,13 @@ predictSummary$rowNum <- rep(1:7113, nRuns)
 predictSummary <- left_join(predictSummary, tempDataSyncS[,c('rowNum','year','riverOrdered','dOYInt','pred.wb')], by='rowNum')
 predictSummary$diff <- predictSummary$pred - predictSummary$pred.wb
 
-predictSummary$s <- ifelse( predictSummary$scenario %in% 9:14, 'middle',
-                    ifelse( predictSummary$scenario %in% 15:20, 'late',
-                    ifelse( predictSummary$scenario %in% 21:26, 'early',NA) ))
-
+predictSummary$s <- ifelse( predictSummary$scenario %in% 14:22, 'middle',NA) 
 
 ggS <- ggSByYear <- list()
 ii=0; iii <- 0
 for(rr in c('WEST BROOK', 'WB JIMMY')){
   for(yy in 1997:2012){
-    for( ss in c('early','middle','late')){
+    for( ss in c('middle')){
       dat <- predictSummary[predictSummary$year==predictSummary$yearOut &
                             predictSummary$riverOrdered == rr &
                             predictSummary$year == yy &

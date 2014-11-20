@@ -165,10 +165,14 @@ bYM$std <- ifelse(bYM$variable %in% c('dOYMinus1','dOYPlus1'), 1, 2 )
 bYM$tempAdj <- bYM$value + 18 # 18 for now as a fill-in
 
 predCubicStd <- 
-  ggplot(bYM, aes(year,tempAdj,color=variable,shape=variable)) +
+  ggplot(bYM, aes(year,tempAdj,linetype=variable,shape=variable)) +
   geom_point(size=3) +
-  geom_smooth(method="lm") +
-  facet_wrap(~std, scales = "free")
+  geom_smooth(method="lm",color='black') +
+  scale_x_continuous('Year') +
+  scale_y_continuous( expression(paste("Temperature ( ",degree, "C)", sep = ""))) +
+  theme_bw(base_size=25) +
+  theme( legend.position="none")# +
+#  facet_wrap(~std, scales = "free")
 
 ggsave( file=paste0(graphsDir,'predCubicStd.png'), plot=predCubicStd, dpi=600 , width=6,height=6, units='in' )
 
@@ -182,9 +186,10 @@ summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus2',] ))
 ```{r plots for cross-validation}
 load( paste0(dataLocalDir, "r.RData"))
 
-ggplot( r[r$incompleteYear & !is.na(r$riverOrdered),], aes(incompleteIndex,diff)) + geom_point()
+#ggplot( r[r$incompleteYear & !is.na(r$riverOrdered),], aes(incompleteIndex,diff)) + geom_point()
 
-ggRMSEDOY <- 
+
+meansByS <-   
 r %>%
   filter( incompleteYear ) %>%
   group_by( scenario ) %>%
@@ -193,13 +198,21 @@ r %>%
                n    =    n(  ),
              dOYDiff = min(dOYDiff),
                   s = unique(s)) %>%
-  filter( !is.na( s ) ) %>%
-  mutate( dOYDiff = ifelse( dOYDiff == -Inf,0, dOYDiff ) ) %>%
-ggplot( . ,aes(dOYDiff,mean,shape=factor(s))) +
-  geom_point( size=4 ) + 
+  filter( !is.na( s )
+         # , s=='middle' 
+         ) %>%
+  mutate( dOYDiff = ifelse( dOYDiff == -Inf,0, dOYDiff ) ) 
+
+ggRMSEDOY <- 
+ggplot( meansByS[meansByS$s=='middle',] ,aes(dOYDiff,mean
+          #     ,shape=factor(s)
+               )) +
+  geom_point( size=4 ) +
   geom_smooth(method='lm'
               #, formula=y~x+I(x^2)
-              ,se=F,aes(linetype=factor(s)),color='black') +
+              ,se=F,color='black') +
+  geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'earlyChunk',], shape=1,size=4 ) +
+  geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'lateChunk',], shape=5,size=3  ) +
   scale_x_continuous('Number of days included in estimation') +
   scale_y_continuous('Difference in RMSE from base case') +
   theme_bw(base_size=25)
