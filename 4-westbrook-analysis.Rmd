@@ -356,6 +356,7 @@ years <- data.frame(year=unique(tempDataSyncS$year)) %>%
 #years=data.frame(year=1997:2000)
 
 ggObsPred <- ggCubic <- list()
+overlap <- rep(NA,5)
 rm(rmseByOut,rmseByOutAll)
 rmseByOut <- rmseByOutAll <- predictSummary <- NA
 
@@ -369,7 +370,7 @@ hiDOY  <- round(quantile(tempDataSyncS$dOYInt,0.85))
 rm(dOYKeep1); dOYKeep1 <- matrix(NA,28,nDays*10)
 # add 1 row at end to hold as all NAs. this is the case off no obs for a given year
 iD <- 0
-for( iDay in seq(100,280,15) ){
+for( iDay in seq(70,310,20) ){
   iD <- iD+1
   dOYKeep1[iD,1:length(iDay:(iDay+nDays-1) )] <- iDay:(iDay+nDays-1) 
   #dOYKeep1[2,1:length(270:(270+nDays-1))] <- 270:(270+nDays-1)
@@ -422,10 +423,19 @@ dOYKeep1[28,] <- NA # just as a reminder. No data for the year case
 # dOYKeep1[25,1:length((mDOY-nDays*4):(mDOY))] <- (mDOY-nDays*4):(mDOY)
 # #dOYKeep1[26,1:length((mDOY-nDays*5):(mDOY))] <- (mDOY-nDays*5):(mDOY)
 
+
+rivs <- list()
+rivs[[1]] <- "WEST BROOK"
+rivs[[2]] <- unique(tempDataSyncS$riverOrdered)
+
 inc <- 0
+
+# loop through either excluing just the west brook or all rivers in a given year/scenario
+for ( rivsIndex in 1:2 ){
 
 # loop through the scenarios
 for ( k in 1:nrow( dOYKeep1 ) ){
+#for ( k in c(12,18,26,28) ){
 
 dOYKeep <- dOYKeep1[ k, ] 
 dOYKeep <- dOYKeep[ !is.na( dOYKeep ) ]
@@ -434,23 +444,41 @@ maxDOY <- max(dOYKeep)
 
 # loop over years
 for ( i in 1:( nrow(years) + 0 ) ){
-  
+# for ( i in 12 ){
+ 
   inc <- inc + 1
   y <- years$year[i]
-  print(c(inc,k,i,y))
+  #print(c(inc,k,i,y))
 
   dat <- tempDataSyncS
   dat$temp[ dat$year %in% y 
-            & dat$dOYInt %!in% dOYKeep   
+            & dat$dOYInt %!in% dOYKeep
+            & tempDataSyncS$riverOrdered %in% rivs[[rivsIndex]]
           ] <- NA
-  
-  
+    
   dat <- indexDeployments( data.frame(dat) )
   firstObsRows <- createFirstRows(dat)
   evalRows <- createEvalRows(dat)
   
   dat$eval <- dat$rowNum %in% evalRows
   dat$first <- dat$rowNum %in% firstObsRows
+  
+  overlap1 <-  
+    dat %>%
+      group_by( riverOrdered ) %>%
+      filter( year == y ) %>%
+      mutate( #numD = length( intersect( dOYInt , dOYKeep ) ),
+              numD = sum( !is.na(temp) ),
+              propD = numD / length( dOYInt ),
+              rivsIndex=rivsIndex,
+              scenario = k,
+              year = y) %>%
+      select( numD,propD,scenario,year,rivsIndex ) %>%
+      distinct(riverOrdered,numD)
+  
+  overlap <- rbind(overlap,overlap1)
+
+  print(c(inc,rivsIndex,k,i,y,overlap1$propD))
   
   #Don't do any estimation if there are no firstObsRows for this year
   if( length(intersect( dat[ dat$year == y,'rowNum' ],firstObsRows ) ) > 0 ){
@@ -461,7 +489,7 @@ for ( i in 1:( nrow(years) + 0 ) ){
                                           n.burn = n.burn, n.it = n.it, n.thin = n.thin, nc = 3,
                                           coda = coda.tf, param.list = monitor.params)) )
   
-    save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidate_",k,"_",y,".RData"))
+    save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidate_",rivsIndex,"_",k,"_",y,".RData"))
   
   # add mean residuals and predicted values from the jags run
   # this replaces Dan's loop. It's a lot more code but a lot faster.
@@ -477,30 +505,32 @@ for ( i in 1:( nrow(years) + 0 ) ){
     tempDataSyncS %>%
     group_by( year,riverOrdered ) %>%
     summarise( rmse = rmse( resid ) ) %>%
-    mutate( scenario = k,
+    mutate( rivsIndex=rivsIndex,
+            scenario = k,
             yearIn = years$year[i],
             minDOY = minDOY,
-            maxDOY = maxDOY)
+            maxDOY = maxDOY ) %>%
+    left_join( overlap1)
 
   print( rmseBy %>% dcast( year~riverOrdered, value.var="rmse" ) )  
 
   rmseByOutAll <- rbind(rmseByOutAll,rmseBy)
 
-  predictSummary <- rbind( predictSummary, data.frame( scenario = k, yearOut = y, minDOY=minDOY, maxDOY=maxDOY,pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid ) )
+  predictSummary <- rbind( predictSummary, data.frame( r=tempDataSyncS$river, year=tempDataSyncS$year, dOYInt = tempDataSyncS$dOYInt, rivsIndex=rivsIndex, scenario = k, yearOut = y, minDOY=minDOY, maxDOY=maxDOY,pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid ) )
 
-  means <- ggs(M.wb) %>%
-    group_by(Parameter)%>%
-    summarise(mean=mean(value),
-              sd=sd(value),
-              qLo=quantile(value,probs=c(0.025)),
-              qHi=quantile(value,probs=c(0.975))
-              )
-
-  pC <- predCubic(means)
-  ggCubic[[inc]] <- ggplot(pC$predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.25)
-   
-  print( ggCubic[[inc]] )
-  
+#   means <- ggs(M.wb) %>%
+#     group_by(Parameter)%>%
+#     summarise(mean=mean(value),
+#               sd=sd(value),
+#               qLo=quantile(value,probs=c(0.025)),
+#               qHi=quantile(value,probs=c(0.975))
+#               )
+# 
+#   pC <- predCubic(means)
+#   ggCubic[[inc]] <- ggplot(pC$predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.25)
+#    
+#   print( ggCubic[[inc]] )
+#   
                            
   ggObsPred[[inc]] <- 
   ggplot(tempDataSyncS
@@ -511,15 +541,22 @@ for ( i in 1:( nrow(years) + 0 ) ){
     geom_line(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% y,])+
     geom_point(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% y,])+
     geom_point(color='red') +
-
-    ggtitle(paste(inc,' Scenario = ',k,' Year =',y)) +
+    #geom_point( aes(dOY,1), data=data.frame(dOY=dOYKeep))+
+    ggtitle(paste(inc,'rivsIndex = ',rivsIndex,' Scenario = ',k,' Year =',y)) +
     facet_wrap(~riverOrdered)
 
+
     if( nrow(dat[dat$year %in% y & dat$rowNum %in% evalRows,] ) > 0 ){
-      ggObsPred[[inc]] <- 
-        ggObsPred[[inc]] + 
-          geom_point( aes(dOY,0), color='darkgreen',data=dat[dat$year %in% y & dat$rowNum %in% evalRows,]  ) 
-    }
+        ggObsPred[[inc]] <-
+          ggObsPred[[inc]] +
+          geom_point( aes(dOY,0), color='darkgreen',data=dat[dat$year %in% y & dat$rowNum %in% evalRows,]  )
+    }    
+    if( nrow(dat[dat$year %in% y & dat$rowNum %in% firstObsRows,] ) > 0 ){
+        ggObsPred[[inc]] <-
+          ggObsPred[[inc]] +
+          geom_point( aes(dOY,0.5), color='darkred',data=dat[dat$year %in% y & dat$rowNum %in% firstObsRows,]  )
+    }     
+
   print( ggObsPred[[inc]] )
 
   rmseByOut <- rbind( rmseByOut, rmseBy[ rmseBy$year == y, ] )
@@ -528,10 +565,10 @@ for ( i in 1:( nrow(years) + 0 ) ){
   } # bracket for if statement checking intersection of evalRows and rowNum by year
  } # year bracket 
 } #k bracket
-
+} #river bracket
 predictSummary <- na.omit(predictSummary)
 
-save( rmseByOut,rmseByOutAll,predictSummary,ggObsPred,ggCubic, file = paste0(dataLocalDir,'validation.RData'))
+save( rmseByOut,rmseByOutAll,predictSummary,overlap,ggObsPred,ggCubic, file = paste0(dataLocalDir,'validation.RData'))
 
 #beep()
 
@@ -587,38 +624,40 @@ r$dOYDiff <- r$maxDOY - r$minDOY
 
 r$s <- ifelse( r$scenario %in% 1:13, '30days',
        ifelse( r$scenario %in% 14:22, 'middle',
-       ifelse( r$scenario %in% 23:27, '30random', NA )
-       ))
+       ifelse( r$scenario %in% 23:27, '30random',
+       ifelse( r$scenario %in% 28, '0days', NA)
+       )))
 
 
 save(r, file = paste0(dataLocalDir, "r.RData"))
 
-ggplot(r[r$incompleteYear & !is.na(r$riverOrdered),], aes(year,rmse, color=factor(scenario))) +
+ggplot(na.omit(r[r$incompleteYear & !is.na(r$riverOrdered),]), aes(year,rmse, color=factor(scenario))) +
   geom_point() + 
   geom_line() +
   geom_point(aes(year,rmseComplete),color='black') +
-  facet_wrap(~riverOrdered)
+  facet_grid(rivsIndex~riverOrdered)
 
-ggplot(r[r$incompleteYear,], aes(year,diff, color=factor(scenario))) +
+ggplot(na.omit(r[r$incompleteYear,]), aes(year,diff, color=factor(scenario))) +
   geom_point() + 
   geom_line() +
-  facet_wrap(~riverOrdered)
+  facet_grid(rivsIndex~riverOrdered)
 
 r[r$incompleteYear,] %>%
-  group_by( scenario ) %>%
+  group_by( scenario, rivsIndex ) %>%
   summarise( mean = mean( diff, na.rm=T ),
              sd   =   sd( diff, na.rm=T ),
              n    =    n(  ) )  %>%
-  ggplot(.,aes(scenario,mean)) +
+  ggplot(.,aes(scenario,mean,color=factor(rivsIndex))) +
     geom_point() + geom_line()
 
 r[r$incompleteYear,] %>%
-  group_by( riverOrdered,scenario ) %>%
+  group_by( riverOrdered,scenario,rivsIndex ) %>%
   summarise( mean = mean( diff, na.rm=T ),
              sd   =   sd( diff, na.rm=T ),
              n    =    n(  ) ) %>%
   ggplot(.,aes(scenario,mean,color=factor(riverOrdered))) +
-    geom_point() + geom_line()
+    geom_point() + geom_line() +
+    facet_wrap(~rivsIndex)
 
 r[r$incompleteYear,] %>%
   group_by( year,scenario ) %>%
@@ -632,6 +671,7 @@ r[r$incompleteYear,] %>%
 
 ```{r deviance from base for pred}
 # Look at deviance in pred's from base case
+# not updated to include rivsIndex
 
 nRuns <- ( nrow(predictSummary)/nrow(tempDataSyncS) )
 predictSummary$rowNum <- rep(1:7113, nRuns)

@@ -134,6 +134,26 @@ ggplot(m[grep("B.year",m$Parameter,invert=F),], aes(x = mean, y = reorder(Parame
 ```
 
 
+```{r trend in bPs?}
+
+bP <- unique( tempDataSyncS[,c("year","riverOrdered",'finalSpringBP','finalFallBP')] )
+bPM <- melt(bP, id.var=c('year','riverOrdered'))
+
+ggBP <- 
+ggplot( bPM[bPM$year>2001,], aes( year,value,color=riverOrdered ) ) +
+  geom_point(aes(shape=riverOrdered),size=5)+
+  #geom_line(aes( linetype=riverOrdered)) +
+  scale_x_continuous('Year') +
+  scale_y_continuous( 'Day of year' ) +
+  geom_smooth(aes( linetype=riverOrdered),method='lm',se=F)+
+  theme_bw(base_size=25) +
+  facet_wrap(~variable, ncol=1, scales='free')
+
+ggsave( file=paste0(graphsDir,'ggBP.png'), plot=ggBP, dpi=600, width=5,height=5, units='in', scale=2 )
+
+
+
+```
 
 
 ```{r predictions of cubic by year}
@@ -183,29 +203,39 @@ summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus1',] ))
 summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus2',] ))
 ```
 
+
 ```{r plots for cross-validation}
 load( paste0(dataLocalDir, "r.RData"))
 
-#ggplot( r[r$incompleteYear & !is.na(r$riverOrdered),], aes(incompleteIndex,diff)) + geom_point()
+#ggplot( r[r$incompleteYear & !is.na(r$riverOrdered),], aes(incompleteIndex,diff)) + geom_point()+facet_wrap(~rivsIndex)
 
 
 meansByS <-   
 r %>%
-  filter( incompleteYear ) %>%
-  group_by( scenario ) %>%
+  filter( incompleteYear,numD > 20, rivsIndex==1 & riverOrdered=='WEST BROOK' | rivsIndex==2 ) %>%
+  group_by( rivsIndex,scenario ) %>%
     summarise( mean = mean( diff, na.rm=T ),
                sd   =   sd( diff, na.rm=T ),
                n    =    n(  ),
              dOYDiff = min(dOYDiff),
+             numD = mean( numD, na.rm=T ),
+             numDSD = sd( numD, na.rm=T ),
                   s = unique(s)) %>%
   filter( !is.na( s )
          # , s=='middle' 
          ) %>%
   mutate( dOYDiff = ifelse( dOYDiff == -Inf,0, dOYDiff ) ) 
 
-ggRMSEDOY <- 
-ggplot( meansByS[meansByS$s=='middle',] ,aes(dOYDiff,mean
+ggplot( r[r$propD>0,] ,aes(numD,diff, color=rivsIndex
           #     ,shape=factor(s)
+               )) +
+  geom_point()+#aes(color=factor(s)) ) +
+  facet_grid(scenario~riverOrdered)
+
+
+ggRMSEDOY <- 
+ggplot( meansByS[meansByS$s=='middle',] ,aes(numD,mean
+               ,shape=factor(rivsIndex)
                )) +
   geom_point( size=4 ) +
   geom_smooth(method='lm'
@@ -215,9 +245,73 @@ ggplot( meansByS[meansByS$s=='middle',] ,aes(dOYDiff,mean
   geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'lateChunk',], shape=5,size=3  ) +
   scale_x_continuous('Number of days included in estimation') +
   scale_y_continuous('Difference in RMSE from base case') +
-  theme_bw(base_size=25)
+  theme_bw(base_size=25) +
+  theme(legend.position="none") 
 
 ggsave( file=paste0(graphsDir,'ggRMSEDOY.png'), plot=ggRMSEDOY, dpi=600 , width=6,height=5, units='in', scale=2 )
 
+# break it up by river and year
+r$rY <- paste0(r$riverOrdered,r$year)
+
+ggMiddleScenarios <- 
+ggplot( na.omit(r[r$s %in% c('0days','middle') 
+                  & r$riverOrdered == "WEST BROOK"
+                  ,]) ,aes(numD,diff
+          #     ,shape=factor(s)
+                ,color=factor(rivsIndex)
+               )) +
+  geom_point(  ) +
+  geom_smooth(method='lm'
+              #, formula=y~x+I(x^2)
+              ,se=F)+#,color='black') +
+  scale_x_continuous('Number of days included in estimation') +
+  scale_y_continuous('Difference in RMSE from base case') +
+  theme_bw(base_size=25) +
+  theme(legend.position="none") +
+  facet_wrap(~year)
+
+ggsave( file=paste0(graphsDir,'ggMiddleScenarios.png'), plot=ggMiddleScenarios, dpi=600 , width=8,height=5, units='in', scale=2 )
+
+
+#6=2002, 11=2007, 13=2009
+for(i in 13:21){print(ggObsPred[[16+16*i]])}
+
+
+```
+
+```{r look at 30day patterns}
+
+gg30DayScenarios <- 
+ggplot( na.omit(r[r$s %in% c('30days') 
+                  & r$riverOrdered == "WEST BROOK"
+                  & r$numD == 30
+                  ,]) ,aes(50+scenario*20,diff    ##########check the eq#####now that we've incl rivsIndex######
+                ,shape=factor(rivsIndex)
+                ,color=factor(rivsIndex)
+               )) +
+  geom_point(  ) +
+  geom_smooth(method='lm'
+              #, formula=y~x+I(x^2)
+              ,se=F)+#,color='black') +
+  scale_x_continuous('Starting doy of year') +
+  scale_y_continuous('Difference in RMSE from base case') +
+  theme_bw(base_size=25) +
+  theme(legend.position="none") +
+  facet_wrap(~year)
+
+ggsave( file=paste0(graphsDir,'gg30DayScenarios.png'), plot=gg30DayScenarios, dpi=600 , width=8,height=5, units='in', scale=2 )
+
+
+
+```
+
+```{r look at cumulative rmse}
+cumulResid <- 
+predictSummary %>%
+  group_by(scenario,yearOut) %>%
+  mutate( c = cumsum(resid) )
+
+ggplot(cumulResid, aes(dOYInt,c)) +
+  geom_point()
 ```
 
