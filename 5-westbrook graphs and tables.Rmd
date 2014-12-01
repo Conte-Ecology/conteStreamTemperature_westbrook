@@ -293,7 +293,7 @@ ggplot( na.omit(r[r$s %in% c('30days')
   geom_smooth(method='lm'
               #, formula=y~x+I(x^2)
               ,se=F)+#,color='black') +
-  scale_x_continuous('Starting doy of year') +
+  scale_x_continuous('Starting day (day of year)') +
   scale_y_continuous('Difference in RMSE from base case') +
   theme_bw(base_size=25) +
   theme(legend.position="none") +

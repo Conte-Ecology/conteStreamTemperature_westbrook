@@ -42,6 +42,7 @@ tempDataSyncS$river[ tempDataSyncS$site == 'MAUSGS_WB_OBEAR' ] <- 'WB OBEAR'
 tempDataSyncS$river[ tempDataSyncS$site == 'MAUSGS_WB_JIMMY' ] <- 'WB JIMMY' 
 tempDataSyncS$riverOrdered <- factor(tempDataSyncS$river,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
 
+tempDataSyncS$date <- as.Date(tempDataSyncS$date) # to make indexDeployments() work. the posix dates turn into numeric when they are shifted
 
 # merge in env data to get flow
 load(paste0(dataOutDir, 'etWB.RData'))
@@ -67,8 +68,8 @@ tempDataSyncS <-
   group_by(site) %>%
     mutate( flowS = ( flow - mean(flow,na.rm = TRUE) ) / sd(flow,na.rm = TRUE) ) %>%
     mutate( flowLS = ( flowL - mean(flowL,na.rm = TRUE) ) / sd(flowL,na.rm = TRUE) ) %>%
-    mutate( sweLS = ( sweL - mean(sweL,na.rm = TRUE) ) / sd(sweL,na.rm = TRUE) ) %>%
-    mutate( ImpoundmentsAllSqKMS = ( ImpoundmentsAllSqKM - mean(ImpoundmentsAllSqKM,na.rm = TRUE) ) / sd(ImpoundmentsAllSqKM,na.rm = TRUE) ) #%>%
+    mutate( sweLS = ( sweL - mean(sweL,na.rm = TRUE) ) / sd(sweL,na.rm = TRUE) ) #%>%
+   # mutate( ImpoundmentsAllSqKMS = ( ImpoundmentsAllSqKM - mean(ImpoundmentsAllSqKM,na.rm = TRUE) ) / sd(ImpoundmentsAllSqKM,na.rm = TRUE) ) #%>%
     #mutate( dAS = ( dA - mean(dA,na.rm = TRUE) ) / sd(dA,na.rm = TRUE) )       
 
 
@@ -119,7 +120,13 @@ ggplot(tempDataSyncS,aes(date,temp))+
 ggplot(tempDataSyncS,aes(dOY,temp))+
   geom_point(aes(color=factor(year)))+
   geom_line(aes(color=factor(year)))+
-  facet_wrap(~site)
+  facet_grid(year~site)
+
+  
+ggplot(tempDataSyncS,aes(dOY,temp))+
+  geom_point(aes(color=factor(year))) +
+  facet_grid(year~riverOrdered)
+
 
 #ggplot(tempDataSyncS,aes(dOY,swe0))+
 #  geom_point()+
@@ -130,7 +137,7 @@ ggplot(tempDataSyncS,aes(dOY,temp))+
 ```{r subset data}
 
 tempDataSyncS <- filter(tempDataSyncS
-                        #, year > 2005  
+                        , year <= 2013  
                         ,site != 'MAUSGS_SEC_45_DL'
                         ,site != 'MAUSGS_SEC_30_DL'
                         #,site == 'MAUSGS_WB_MITCHELL' 
@@ -146,7 +153,7 @@ tempDataSyncS$rowNum <- 1:nrow(tempDataSyncS)
 
 # try moving mean air T?
 # trend across years? use derived paramters
-#loook at correlation btw snow melt last day in spring and spring bp
+# look at correlation btw snow melt last day in spring and spring bp
 # get peak day and max value at peak day from RE. any trend?
 
 data.fixed <- data.frame(intercept = 1
@@ -187,7 +194,7 @@ data.fixed <- data.frame(intercept = 1
                           ) 
 
 data.random.years <- data.frame(intercept.year = 1, 
-                     dOY = tempDataSyncS$dOY, 
+                     dOY  = tempDataSyncS$dOY, 
                      dOY2 = tempDataSyncS$dOY^2,
                      dOY3 = tempDataSyncS$dOY^3
                      )
@@ -212,7 +219,7 @@ tempDataSyncS <- indexDeployments( data.frame(tempDataSyncS) )
 firstObsRows <- createFirstRows(tempDataSyncS)
 evalRows <- createEvalRows(tempDataSyncS)
 
-system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 100, n.it = 100, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
+system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 200, n.it = 100, n.thin = 2, nc = 3, coda = coda.tf, param.list = monitor.params))
 
 save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
 
@@ -293,17 +300,19 @@ g + geom_point(aes(color=factor(year)),alpha = 0.3) + geom_smooth() + theme_bw()
 
 
 #observed vs. predicted
-  ggplot(tempDataSyncS[tempDataSyncS$year>2006,], aes(temp, pred.wb)) +
+  ggplot(tempDataSyncS
+         #[tempDataSyncS$year>2006,]
+         , aes(temp, pred.wb)) +
     geom_point(alpha = 0.3) + 
     geom_abline(intercept=0,slope=1) + 
     theme_bw() +
     facet_grid(year~riverOrdered)
 
-yearPlot <- 2008
+yearPlot <- 2007
 ggplot(tempDataSyncS[
                      tempDataSyncS$year %in% yearPlot
-   #                  &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
-                     #  tempDataSyncS$river == 'WB JIMMY'
+              #       &  tempDataSyncS$site == 'MAUSGS_WB_MITCHELL'
+                     &  tempDataSyncS$river == 'WEST BROOK'
                      ,], aes(dOY, pred.wb)) + 
   geom_point(aes(dOY,temp),color='blue')+
   geom_line(aes(dOY,temp),color='blue')+
@@ -312,7 +321,8 @@ ggplot(tempDataSyncS[
  # geom_line(aes(dOY,pred),data=predCubic[predCubic$year==yearPlot-2005,])+
  #  geom_line(aes(dOY,pred,color=factor(year)),data=predCubic)+
   geom_point(color='red') +
-  facet_wrap(~riverOrdered)
+  facet_wrap(~riverOrdered) +
+xlim(-1.2,-.6)  
 
 
 
@@ -510,13 +520,13 @@ for ( i in 1:( nrow(years) + 0 ) ){
             yearIn = years$year[i],
             minDOY = minDOY,
             maxDOY = maxDOY ) %>%
-    left_join( overlap1)
+    left_join( overlap1 )
 
   print( rmseBy %>% dcast( year~riverOrdered, value.var="rmse" ) )  
 
   rmseByOutAll <- rbind(rmseByOutAll,rmseBy)
 
-  predictSummary <- rbind( predictSummary, data.frame( r=tempDataSyncS$river, year=tempDataSyncS$year, dOYInt = tempDataSyncS$dOYInt, rivsIndex=rivsIndex, scenario = k, yearOut = y, minDOY=minDOY, maxDOY=maxDOY,pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid ) )
+  predictSummary <- rbind( predictSummary, data.frame( r=tempDataSyncS$river, year=tempDataSyncS$year, dOYInt = tempDataSyncS$dOYInt, rivsIndex=rivsIndex, scenario = k, yearOut = y, minDOY=minDOY, maxDOY=maxDOY, temp = tempDataSyncS$temp, pred = tempDataSyncS$pred.wb, resid = tempDataSyncS$resid ) )
 
 #   means <- ggs(M.wb) %>%
 #     group_by(Parameter)%>%

@@ -33,36 +33,41 @@ graphsDir  <- paste0(baseDir, '/graphs/' )
 ```{r Choose data source}
 
 # Select "T" or "F" for using agency data
-sources <- list (
-  # Northeast
-  CTDEP  = CTDEP  <- T,
-  MADEP  = MADEP  <- T,
-  MAFW   = MAFW   <- T,
-  MAUSGS = MAUSGS <- T,
-  MEDMR  = MEDMR  <- T,
-  MEFWS  = MEFWS  <- T,
-  NHDES  = NHDES  <- T,
-  NHFG   = NHFG   <- T,
-  USFS   = USFS   <- T,
-  VTFWS  = VTFWS  <- T,
-  
-  # Montana
-  MTUSGSYellowstone = MTUSGSYellowstone <- F,
-  MTUSGSGlacier     = MTUSGSGlacier     <- F
-)
+# sources <- list (
+#   # Northeast
+#   CTDEP  = CTDEP  <- F,
+#   MADEP  = MADEP  <- F,
+#   MAFW   = MAFW   <- F,
+#   MAUSGS = MAUSGS <- T,
+#   MEDMR  = MEDMR  <- F,
+#   MEFWS  = MEFWS  <- F,
+#   NHDES  = NHDES  <- F,
+#   NHFG   = NHFG   <- F,
+#   USFS   = USFS   <- F,
+#   VTFWS  = VTFWS  <- F,
+#   
+#   # Montana
+#   MTUSGSYellowstone = MTUSGSYellowstone <- F,
+#   MTUSGSGlacier     = MTUSGSGlacier     <- F
+# )
+# 
+# dataSources <- names(sources[(sources == T)])
+# 
+# # Enter the common fields from the temperature ("site" must be one).
+# tempFields <- c('site', 'year', 'dOY', 'date', 'agency', 'temp', 'airTemp')
+# 
+# # Enter the specific covariate fields you want to pull ("site" must be one) or for the entire file, enter "ALL"
+# covFields <- c('site', 'HUC4', 'HUC8', 'HUC12')
+# 
+# # Read in data records and join into one dataframe
+# # ------------------------------------------------
+# #e <- readStreamTempData(timeSeries = T, covariates = F, dataSourceList = dataSources, fieldListTS = tempFields, fieldListCD = covFields, directory = dataInDir )
+# 
 
-dataSources <- names(sources[(sources == T)])
+load(paste0(dataInDir,  "MAUSGS/observedStreamTempAndClimateData_MAUSGS.RData"))
+e <- masterData
 
-# Enter the common fields from the temperature ("site" must be one).
-tempFields <- c('site', 'year', 'dOY', 'date', 'agency', 'temp', 'airTemp')
-
-# Enter the specific covariate fields you want to pull ("site" must be one) or for the entire file, enter "ALL"
-covFields <- c('site', 'HUC4', 'HUC8', 'HUC12')
-
-# Read in data records and join into one dataframe
-# ------------------------------------------------
-e <- readStreamTempData(timeSeries = T, covariates = T, dataSourceList = dataSources, fieldListTS = tempFields, fieldListCD = covFields, directory = dataInDir )
-
+e$temp <- e$meanTemp
 ```
 
 # Calculate the temperature index which is the key metric for estimating the synchrony between air and water temperature.
@@ -142,9 +147,9 @@ for ( i in 1:nrow(siteYearCombos)){
   # Index sites, years, and HUCs
   tempBreaks <- data.frame( year  = as.numeric  (siteYearCombos$year[i]),
                             site  = as.character(siteYearCombos$site[i]),
-                            HUC12 = as.character(unique(e$HUC12[which(e$site == siteYearCombos$site[i])])),
-                            HUC8  = as.character(unique(e$HUC8 [which(e$site == siteYearCombos$site[i])])),
-                            HUC4  = as.character(unique(e$HUC4 [which(e$site == siteYearCombos$site[i])])),
+                           # HUC12 = as.character(unique(e$HUC12[which(e$site == siteYearCombos$site[i])])),
+                            #HUC8  = as.character(unique(e$HUC8 [which(e$site == siteYearCombos$site[i])])),
+                            #HUC4  = as.character(unique(e$HUC4 [which(e$site == siteYearCombos$site[i])])),
                             quantileLo = NA,
                             quantileHi = NA)
   
@@ -262,7 +267,7 @@ for (j in 1:nSites){
 		if(year %in% completeYearsSpring){
 			
       # Loop through approximate time forward until breakpoint in ascending water temp
-      for (i in 1:(200)){
+      for (i in min(eYear$dOY):(200)){
 				
         # From the current day, loop forward through the numForward range to determined which days are in sync
         for (ii in 2:numForwardSpring ){
@@ -345,15 +350,15 @@ for (j in 1:nSites){
 
 # Calculate mean BPs across different scales
 meanBPSite  <- ddply( breaks, .(site) , summarise, meanSpringBPSite  = mean(springBP,na.rm=T), meanFallBPSite  = mean(fallBP,na.rm=T) )
-meanBPHUC12 <- ddply( breaks, .(HUC12), summarise, meanSpringBPHUC12 = mean(springBP,na.rm=T), meanFallBPHUC12 = mean(fallBP,na.rm=T) )
-meanBPHUC8  <- ddply( breaks, .(HUC8) , summarise, meanSpringBPHUC8  = mean(springBP,na.rm=T), meanFallBPHUC8  = mean(fallBP,na.rm=T) )
-meanBPHUC4  <- ddply( breaks, .(HUC4) , summarise, meanSpringBPHUC4  = mean(springBP,na.rm=T), meanFallBPHUC4  = mean(fallBP,na.rm=T) )
+#meanBPHUC12 <- ddply( breaks, .(HUC12), summarise, meanSpringBPHUC12 = mean(springBP,na.rm=T), meanFallBPHUC12 = mean(fallBP,na.rm=T) )
+#meanBPHUC8  <- ddply( breaks, .(HUC8) , summarise, meanSpringBPHUC8  = mean(springBP,na.rm=T), meanFallBPHUC8  = mean(fallBP,na.rm=T) )
+#meanBPHUC4  <- ddply( breaks, .(HUC4) , summarise, meanSpringBPHUC4  = mean(springBP,na.rm=T), meanFallBPHUC4  = mean(fallBP,na.rm=T) )
 
 # Merge in mean BPs to "breaks"
 breaks <- merge( x = breaks, y = meanBPSite , by = 'site' , all.x = T, all.y = F, sort = F)
-breaks <- merge( x = breaks, y = meanBPHUC12, by = 'HUC12', all.x = T, all.y = F, sort = F)
-breaks <- merge( x = breaks, y = meanBPHUC8 , by = 'HUC8' , all.x = T, all.y = F, sort = F)
-breaks <- merge( x = breaks, y = meanBPHUC4 , by = 'HUC4' , all.x = T, all.y = F, sort = F)
+#breaks <- merge( x = breaks, y = meanBPHUC12, by = 'HUC12', all.x = T, all.y = F, sort = F)
+#breaks <- merge( x = breaks, y = meanBPHUC8 , by = 'HUC8' , all.x = T, all.y = F, sort = F)
+#breaks <- merge( x = breaks, y = meanBPHUC4 , by = 'HUC4' , all.x = T, all.y = F, sort = F)
 
 # Add columns for final breakpoints
 breaks$finalSpringBP  <- NA
@@ -387,44 +392,44 @@ siteBP <- which(is.na(breaks$finalFallBP) & !is.na(breaks$meanFallBPSite) )
 breaks$finalFallBP [ siteBP ] <- breaks$meanFallBPSite[ siteBP ]
 breaks$sourceFallBP[ siteBP ] <- 'site mean'
 
-
-# HUC12 averaged BPs
-# ------------------
-# Spring
-huc12BP <- which(is.na(breaks$finalSpringBP) & !is.na(breaks$meanSpringBPHUC12) )
-breaks$finalSpringBP [ huc12BP ] <- breaks$meanSpringBPHUC12[ huc12BP ]
-breaks$sourceSpringBP[ huc12BP ] <- 'HUC12 mean'
-
-# Fall
-huc12BP <- which(is.na(breaks$finalFallBP) & !is.na(breaks$meanFallBPHUC12) )
-breaks$finalFallBP [ huc12BP ] <- breaks$meanFallBPHUC12[ huc12BP ]
-breaks$sourceFallBP[ huc12BP ] <- 'HUC12 mean'
-
-
-# HUC8 averaged BPs
-# -----------------
-# Spring
-huc8BP <- which(is.na(breaks$finalSpringBP) & !is.na(breaks$meanSpringBPHUC8) )
-breaks$finalSpringBP [ huc8BP ] <- breaks$meanSpringBPHUC8[ huc8BP ]
-breaks$sourceSpringBP[ huc8BP ] <- 'HUC8 mean'
-
-# Fall
-huc8BP <- which(is.na(breaks$finalFallBP) & !is.na(breaks$meanFallBPHUC8) )
-breaks$finalFallBP [ huc8BP ] <- breaks$meanFallBPHUC8[ huc8BP ]
-breaks$sourceFallBP[ huc8BP ] <- 'HUC8 mean'
-
-
-# HUC4 averaged BPs
-# -----------------
-# Spring
-huc4BP <- which(is.na(breaks$finalSpringBP) & !is.na(breaks$meanSpringBPHUC4) )
-breaks$finalSpringBP [ huc4BP ] <- breaks$meanSpringBPHUC4[ huc4BP ]
-breaks$sourceSpringBP[ huc4BP ] <- 'HUC4 mean'
-
-# Fall
-huc4BP <- which(is.na(breaks$finalFallBP) & !is.na(breaks$meanFallBPHUC4) )
-breaks$finalFallBP [ huc4BP ] <- breaks$meanFallBPHUC4[ huc4BP ]
-breaks$sourceFallBP[ huc4BP ] <- 'HUC4 mean'
+# 
+# # HUC12 averaged BPs
+# # ------------------
+# # Spring
+# huc12BP <- which(is.na(breaks$finalSpringBP) & !is.na(breaks$meanSpringBPHUC12) )
+# breaks$finalSpringBP [ huc12BP ] <- breaks$meanSpringBPHUC12[ huc12BP ]
+# breaks$sourceSpringBP[ huc12BP ] <- 'HUC12 mean'
+# 
+# # Fall
+# huc12BP <- which(is.na(breaks$finalFallBP) & !is.na(breaks$meanFallBPHUC12) )
+# breaks$finalFallBP [ huc12BP ] <- breaks$meanFallBPHUC12[ huc12BP ]
+# breaks$sourceFallBP[ huc12BP ] <- 'HUC12 mean'
+# 
+# 
+# # HUC8 averaged BPs
+# # -----------------
+# # Spring
+# huc8BP <- which(is.na(breaks$finalSpringBP) & !is.na(breaks$meanSpringBPHUC8) )
+# breaks$finalSpringBP [ huc8BP ] <- breaks$meanSpringBPHUC8[ huc8BP ]
+# breaks$sourceSpringBP[ huc8BP ] <- 'HUC8 mean'
+# 
+# # Fall
+# huc8BP <- which(is.na(breaks$finalFallBP) & !is.na(breaks$meanFallBPHUC8) )
+# breaks$finalFallBP [ huc8BP ] <- breaks$meanFallBPHUC8[ huc8BP ]
+# breaks$sourceFallBP[ huc8BP ] <- 'HUC8 mean'
+# 
+# 
+# # HUC4 averaged BPs
+# # -----------------
+# # Spring
+# huc4BP <- which(is.na(breaks$finalSpringBP) & !is.na(breaks$meanSpringBPHUC4) )
+# breaks$finalSpringBP [ huc4BP ] <- breaks$meanSpringBPHUC4[ huc4BP ]
+# breaks$sourceSpringBP[ huc4BP ] <- 'HUC4 mean'
+# 
+# # Fall
+# huc4BP <- which(is.na(breaks$finalFallBP) & !is.na(breaks$meanFallBPHUC4) )
+# breaks$finalFallBP [ huc4BP ] <- breaks$meanFallBPHUC4[ huc4BP ]
+# breaks$sourceFallBP[ huc4BP ] <- 'HUC4 mean'
 ```
 
 ```{r Save output}
