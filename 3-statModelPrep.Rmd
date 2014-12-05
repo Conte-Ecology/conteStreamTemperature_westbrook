@@ -203,7 +203,7 @@ tempDataSyncS <- cbind(tempDataSync[ ,c(1:11)],
 
 ```{r save tempDataSync for use in analysis}
 
-save(tempDataSync, tempDataSyncS, file=paste0(dataOutDir, 'tempDataSync.RData'))
+save(tempDataSync, file=paste0(dataLocalDir, 'tempDataSync.RData'))
 
 ```
 

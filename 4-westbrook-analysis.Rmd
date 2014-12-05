@@ -34,7 +34,7 @@ dataLocalDir <- paste0(baseDir, '/localData/')
 graphsDir <- paste0(baseDir, '/graphs/')
 
 # load standardized and formatted data created with the 3-statModelPrep.Rmd script
-load(paste0(dataOutDir, 'tempDataSync.RData'))
+load(paste0(dataLocalDir, 'tempDataSync.RData'))
 
 tempDataSyncS$river <- 'WEST BROOK'
 tempDataSyncS$river[ tempDataSyncS$site == 'MAUSGS_WB_MITCHELL' ] <- 'WB MITCHELL' 
@@ -45,14 +45,15 @@ tempDataSyncS$riverOrdered <- factor(tempDataSyncS$river,levels=c('WEST BROOK','
 tempDataSyncS$date <- as.Date(tempDataSyncS$date) # to make indexDeployments() work. the posix dates turn into numeric when they are shifted
 
 # merge in env data to get flow
-load(paste0(dataOutDir, 'etWB.RData'))
-et$dateDate <- as.Date(et$date) # to match tempDataSyncS
-et$riverOrdered <- factor(et$site,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
+#load(paste0(dataOutDir, 'etWB.RData'))
+#et$dateDate <- as.Date(et$date) # to match tempDataSyncS
+#et$riverOrdered <- factor(et$site,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
 
-tempDataSyncS <- merge(x=tempDataSyncS, y=et[,c('riverOrdered','flow','dateDate')], 
-                       by.x=c('riverOrdered','date'),
-                       by.y=c('riverOrdered','dateDate'),
-                       all.x=T)
+et2 <- read.csv(paste0(dataInDir, 'MAUSGS/west drainage discharge.csv'),header=T)
+et2$date <- as.Date(strptime(et2$date2, format="%m/%d/%Y") )
+et2$riverOrdered <- factor(et2$river,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
+
+tempDataSyncS <- left_join(x=tempDataSyncS, y=et2[,c('riverOrdered','flow','date')], )
 
 # add in correct drainage area  - data from hig res flow lines from kyle 
 tempDataSyncS$dA <- 0.55833
@@ -109,6 +110,20 @@ tempDataSyncS$site6 <- ifelse( tempDataSyncS$site=='MAUSGS_WEST_BROOK',1,0 )
 
 ```
 
+```{r subset data}
+
+tempDataSyncS <- filter(tempDataSyncS
+                        , year <= 2013  
+                        ,site != 'MAUSGS_SEC_45_DL'
+                        ,site != 'MAUSGS_SEC_30_DL'
+                        ,riverOrdered != 'WB MITCHELL' | year != 2013 #construction led to funky data
+                        #,site == 'MAUSGS_WB_MITCHELL' 
+                        )#'MAUSGS_WEST_BROOK')
+
+tempDataSyncS$rowNum <- 1:nrow(tempDataSyncS)
+
+```
+
 ```{r raw data graphs}
 
 ggplot(tempDataSyncS,aes(date,temp))+
@@ -121,33 +136,18 @@ ggplot(tempDataSyncS,aes(dOY,temp))+
   geom_point(aes(color=factor(year)))+
   geom_line(aes(color=factor(year)))+
   facet_grid(year~site)
-
   
 ggplot(tempDataSyncS,aes(dOY,temp))+
   geom_point(aes(color=factor(year))) +
   facet_grid(year~riverOrdered)
 
-
-#ggplot(tempDataSyncS,aes(dOY,swe0))+
-#  geom_point()+
-#  facet_wrap(~year)
-
-```
-
-```{r subset data}
-
-tempDataSyncS <- filter(tempDataSyncS
-                        , year <= 2013  
-                        ,site != 'MAUSGS_SEC_45_DL'
-                        ,site != 'MAUSGS_SEC_30_DL'
-                        #,site == 'MAUSGS_WB_MITCHELL' 
-                        )#'MAUSGS_WEST_BROOK')
-
-tempDataSyncS$rowNum <- 1:nrow(tempDataSyncS)
+ggplot(et2,aes(date,flow))+
+  geom_point()+
+  geom_point(aes(date,temp),tempDataSyncS)+
+  facet_wrap(~riverOrdered)
 
 
 ```
-
 
 ```{r run JAGS model}
 
@@ -182,8 +182,8 @@ data.fixed <- data.frame(intercept = 1
         #                 ,river2Flow = tempDataSyncS$river2 * tempDataSyncS$flowLS
         #                 ,river3Flow = tempDataSyncS$river3 * tempDataSyncS$flowLS
 
-                     #     ,imp = tempDataSyncS$ImpoundmentsAllSqKM
-                     #     ,dA = tempDataSyncS$dA
+                        #  ,imp = tempDataSyncS$ImpoundmentsAllSqKM
+                       #   ,dA = tempDataSyncS$dA                                        Very high CI
                       #   ,swe = tempDataSyncS$swe0   
          #                ,sweFlow = tempDataSyncS$swe0 * tempDataSyncS$flowLS
 
@@ -201,6 +201,7 @@ data.random.years <- data.frame(intercept.year = 1,
 
 monitor.params <- c("residuals",
             "deviance",
+ #           "pD",
             "sigma",
             "B.0",
             "B.year",
@@ -219,7 +220,7 @@ tempDataSyncS <- indexDeployments( data.frame(tempDataSyncS) )
 firstObsRows <- createFirstRows(tempDataSyncS)
 evalRows <- createEvalRows(tempDataSyncS)
 
-system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 200, n.it = 100, n.thin = 2, nc = 3, coda = coda.tf, param.list = monitor.params))
+system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 100, n.it = 100, n.thin = 2, nc = 3, coda = coda.tf, param.list = monitor.params))
 
 save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
 
@@ -257,10 +258,8 @@ save( ggs.wb,  file = paste0(dataLocalDir,'ggs_wb.RData') )
 #beep()
 ```
 
-
 ## Evaluate MCMC Iterations
 ```{r check model convergence and mixing}
-
 
 # this saves a pdf file
 ggmcmc(ggs.wb, file = "ggmcmc-wb.pdf", family = "B.0", plot = c("ggs_density",  "ggs_traceplot", "ggs_running", "ggs_compare_partial", "ggs_autocorrelation", "ggs_crosscorrelation", "ggs_Rhat", "ggs_geweke", "ggs_caterpillar"))

@@ -1,5 +1,8 @@
 cross-validation
 rmse by river,year
+```{r libraries}
+library(gridExtra)
+```
 
 
 
@@ -14,35 +17,151 @@ codeDir <- paste0(baseDir, '/code/')
 
 load(paste0(dataLocalDir,'means.RData'))
 load(paste0(dataLocalDir,'tempDataSyncSUsed.RData'))
+#load(paste0(dataLocalDir,'tempDataSync.RData'))
 
 ```
+
+
+```{r daymet airTemp vs WB airTemp}
+
+load(paste0(dataInDir,'MAUSGS/westbrookAirTempComparison_Paper.RData'))
+load(paste0(dataOutDir, 'springFallBreakpoints.RData'))
+
+airTempComparison <- left_join( airTempComparison,springFallBPs[springFallBPs$site=='MAUSGS_WEST_BROOK',],by='year')
+
+# Clip to syncronized season
+airTempComparison <- filter(airTempComparison, dOY >= finalSpringBP & dOY <= finalFallBP)
+
+summary(lm(meanAirTemp_WB~meanAirTemp_Day, data=airTempComparison))
+
+ggAirTempComparison <- 
+ggplot(airTempComparison,aes(meanAirTemp_WB,meanAirTemp_Day))+
+  geom_point()+
+  geom_abline(intercept=0,slope=1) +
+  geom_smooth(method='lm') +
+  scale_x_continuous(expression(paste("Air temperature from WB ( ",degree, "C)", sep = ""))) +
+  scale_y_continuous(expression(paste("Air temperature from dayMet ( ",degree, "C)", sep = ""))) +
+  theme_bw(base_size=25)+
+  facet_wrap(~year)
+
+ggsave( file=paste0(graphsDir,'ggAirTempComparison.png'), plot=ggAirTempComparison, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+
+ggplot(airTempComparison,aes(dOY,meanAirTemp_Day))+
+  geom_point()+
+  geom_line()+
+  geom_point(aes(dOY,meanAirTemp_WB),color='red') +
+    geom_line(aes(dOY,meanAirTemp_WB),color='red') +
+  scale_x_continuous(expression(paste("Air temperature from WB ( ",degree, "C)", sep = ""))) +
+  scale_y_continuous(expression(paste("Air temperature from dayMet ( ",degree, "C)", sep = ""))) +
+  theme_bw(base_size=25)+
+  facet_wrap(~year)
+
+#max air temp
+ggplot(airTempComparison,aes(dOY,maxAirTemp_Day))+
+  geom_point()+
+  geom_line()+
+  geom_point(aes(dOY,maxAirTemp_WB),color='red') +
+    geom_line(aes(dOY,maxAirTemp_WB),color='red') +
+  scale_x_continuous(expression(paste("Air temperature from WB ( ",degree, "C)", sep = ""))) +
+  scale_y_continuous(expression(paste("Air temperature from dayMet ( ",degree, "C)", sep = ""))) +
+  theme_bw(base_size=25)+
+  facet_wrap(~year)
+
+
+```
+
 
 ```{r raw data graphs}
 # raw unstandardized are in tempDataSync
 
-tempDataSync$river <- 'WEST BROOK'
-tempDataSync$river[ tempDataSync$site == 'MAUSGS_WB_MITCHELL' ] <- 'WB MITCHELL' 
-tempDataSync$river[ tempDataSync$site == 'MAUSGS_WB_OBEAR' ] <- 'WB OBEAR' 
-tempDataSync$river[ tempDataSync$site == 'MAUSGS_WB_JIMMY' ] <- 'WB JIMMY' 
-tempDataSync$riverOrdered <- factor(tempDataSync$river,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
 
-ggRawJimmy <- 
-ggplot(tempDataSync[tempDataSync$riverOrdered == 'WB JIMMY' & tempDataSync$year>2006,],aes(dOY,temp))+
+###################################################
+# graph with tempIndex and breaks for illustration
+# tempIndex is in e, not in tempDataSyncS
+
+# to get quantiles
+load(paste0(dataOutDir, 'springFallBreakpoints.RData'))
+#has temp, airTemp, and tempIndex
+load(paste0(dataLocalDir,'e.RData'))
+
+e$river <- 'WEST BROOK'
+e$river[ e$site == 'MAUSGS_WB_MITCHELL' ] <- 'WB MITCHELL' 
+e$river[ e$site == 'MAUSGS_WB_OBEAR' ] <- 'WB OBEAR' 
+e$river[ e$site == 'MAUSGS_WB_JIMMY' ] <- 'WB JIMMY' 
+e$riverOrdered <- factor(e$river,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
+
+ggplot(e, aes(dOY,temp)) + geom_point() + facet_grid(year~riverOrdered)
+
+###
+ggRawWB <- 
+ggplot(e[e$riverOrdered == 'WEST BROOK' & e$year %in% 2003:2004,],aes(dOY,temp))+
   geom_line(size=0.5)+
   geom_line(aes(dOY,airTemp),color='red',size=0.5)+
-  scale_x_continuous("Day of year") +
-  scale_y_continuous(expression(paste("Temperature ( ",degree, "C)", sep = ""))) +
+  scale_x_continuous(lim=c(0,360)) +
+  scale_y_continuous("Temperature (C)") +
+#    scale_y_continuous(expression(paste("Temperature ( ",degree, "C)", sep = ""))) + #this results in panels not lining up
+      geom_vline( aes(xintercept=finalSpringBP), data=springFallBPs[springFallBPs$year %in% 2003:2004 & springFallBPs$site == 'MAUSGS_WEST_BROOK',] ) +
+      geom_vline( aes(xintercept=finalFallBP), data=springFallBPs[springFallBPs$year %in% 2003:2004 & springFallBPs$site == 'MAUSGS_WEST_BROOK',] ) +
   theme_bw(base_size=25)+
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank()) +
   facet_wrap(~year)
 
-ggsave( file=paste0(graphsDir,'ggRawJimmy.png'), plot=ggRawJimmy, dpi=600 , width=6,height=5, units='in', scale=2 )
+ggsave( file=paste0(graphsDir,'ggRawWB.png'), plot=ggRawWB, dpi=600 , width=6,height=5, units='in', scale=2 )
 
 
+ggWBBPs <- 
+ggplot(e[e$riverOrdered == 'WEST BROOK' & e$year %in% 2003:2004,],aes(dOY,movingMean))+
+  geom_point()+
+ # geom_line(aes(dOY,airTemp),color='red',size=0.5)+
+  geom_hline( aes(yintercept=quantileLo), data=springFallBPs[springFallBPs$year %in% 2003:2004 & springFallBPs$site == 'MAUSGS_WEST_BROOK',] ) +
+  geom_hline( aes(yintercept=quantileHi), data=springFallBPs[springFallBPs$year %in% 2003:2004 & springFallBPs$site == 'MAUSGS_WEST_BROOK',] ) +
+    geom_vline( aes(xintercept=finalSpringBP), data=springFallBPs[springFallBPs$year %in% 2003:2004 & springFallBPs$site == 'MAUSGS_WEST_BROOK',] ) +
+      geom_vline( aes(xintercept=finalFallBP), data=springFallBPs[springFallBPs$year %in% 2003:2004 & springFallBPs$site == 'MAUSGS_WEST_BROOK',] ) +
+  scale_x_continuous("Day of year",lim=c(0,360)) +
+  scale_y_continuous("Temperature Index",lim=c(-25,25) ) +
+  theme_bw(base_size=25) +
+  theme(strip.text.x = element_blank(),
+        strip.background = element_blank()) +
+  #ylim(-5,30) +
+  facet_wrap(~year)
 
-ggplot(tempDataSyncS, aes(dOYInt,temp)) + geom_boxplot(aes(fill=factor(dOYInt))) + facet_wrap(~riverOrdered)
+rawWB <- arrangeGrob(ggRawWB, ggWBBPs,ncol=1)#, widths=c(5,1.5))  
+
+ggsave( file=paste0(graphsDir,'rawWB.png'), plot=rawWB, dpi=600 , width=6,height=5, units='in', scale=2 )
 
 
 ```
+
+
+```{r characterize years - hot, cold seasons}
+
+ggGam <- 
+ggplot(tempDataSyncS,aes(dOYInt,temp)) + geom_point() +geom_smooth(se=F,color='white',size=2.5) +
+  scale_x_continuous("Day of Year") +
+  scale_y_continuous("Temperature (C)") +
+  theme_bw(base_size=25)
+
+ggsave( file=paste0(graphsDir,'ggGam.png'), plot=ggGam, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+
+gGam <- gam(temp~s(dOY),data=tempDataSyncS)
+g <- data.frame(s=tempDataSyncS$site,y=tempDataSyncS$year,dOY=tempDataSyncS$dOY,r=gGam$residuals,f=gGam$fitted.values)
+ggplot(g, aes(dOY,r)) +geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
+
+gSum <- 
+  g %>%
+  group_by(s,y)%>%
+  mutate( cR = cumsum(r) )
+
+ggplot(gSum, aes(dOY,cR)) + geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
+
+
+```
+
+
+
 
 Model validation
 
@@ -76,6 +195,8 @@ keepRows <-
                   )
 
 rHat <- unique( ggs_Rhat(ggs.wb[keepRows,])$data )
+rHat$Rhat1 <- ifelse(rHat$Rhat < 1,1,rHat$Rhat)
+max(rHat$Rhat1,na.rm=T)
 
 # table of parameter estimates for MS
 m <- left_join( rHat[,c('Parameter','Rhat')], means )
@@ -196,7 +317,7 @@ predCubicStd <-
 
 ggsave( file=paste0(graphsDir,'predCubicStd.png'), plot=predCubicStd, dpi=600 , width=6,height=6, units='in' )
 
-# none of these is significant
+# test significance
 summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYMinus2',] ))
 summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYMinus1',] ))
 summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus1',] ))
@@ -226,6 +347,7 @@ r %>%
          ) %>%
   mutate( dOYDiff = ifelse( dOYDiff == -Inf,0, dOYDiff ) ) 
 
+
 ggplot( r[r$propD>0,] ,aes(numD,diff, color=rivsIndex
           #     ,shape=factor(s)
                )) +
@@ -239,7 +361,7 @@ ggplot( meansByS[meansByS$s=='middle',] ,aes(numD,mean
                )) +
   geom_point( size=4 ) +
   geom_smooth(method='lm'
-              #, formula=y~x+I(x^2)
+              , formula=y~x+I(x^2)
               ,se=F,color='black') +
   geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'earlyChunk',], shape=1,size=4 ) +
   geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'lateChunk',], shape=5,size=3  ) +
@@ -285,13 +407,13 @@ gg30DayScenarios <-
 ggplot( na.omit(r[r$s %in% c('30days') 
                   & r$riverOrdered == "WEST BROOK"
                   & r$numD == 30
-                  ,]) ,aes(50+scenario*20,diff    ##########check the eq#####now that we've incl rivsIndex######
+                  ,]) ,aes(70+scenario*20,diff  
                 ,shape=factor(rivsIndex)
                 ,color=factor(rivsIndex)
                )) +
   geom_point(  ) +
   geom_smooth(method='lm'
-              #, formula=y~x+I(x^2)
+              ,formula=y~x+I(x^2) #+I(x^3)
               ,se=F)+#,color='black') +
   scale_x_continuous('Starting day (day of year)') +
   scale_y_continuous('Difference in RMSE from base case') +
@@ -306,12 +428,12 @@ ggsave( file=paste0(graphsDir,'gg30DayScenarios.png'), plot=gg30DayScenarios, dp
 ```
 
 ```{r look at cumulative rmse}
-cumulResid <- 
-predictSummary %>%
-  group_by(scenario,yearOut) %>%
-  mutate( c = cumsum(resid) )
-
-ggplot(cumulResid, aes(dOYInt,c)) +
-  geom_point()
+# cumulResid <- 
+# predictSummary %>%
+#   group_by(scenario,yearOut) %>%
+#   mutate( c = cumsum(resid) )
+# 
+# ggplot(cumulResid, aes(dOYInt,c)) +
+#   geom_point()
 ```
 

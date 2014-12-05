@@ -22,6 +22,7 @@ outFile <- 'springFallBreakpoints'
 dataInDir  <- paste0(baseDir, '/dataIn/' )
 dataOutDir <- paste0(baseDir, '/dataOut/')
 graphsDir  <- paste0(baseDir, '/graphs/' )
+dataLocalDir <- paste0(baseDir, '/localData/')
 
 # Source functions (now should be part of package)
 #source(paste0(baseDir, 'code/functions/temperatureModelingFunctions.R'))
@@ -127,6 +128,8 @@ for (i in 1:nrow(siteYearCombos)){
 
 # Maintain order
 e <- e[order(e$count),]
+
+save(e, file=paste0(dataLocalDir,'e.RData'))
 
 ```
 
@@ -434,7 +437,7 @@ breaks$sourceFallBP[ siteBP ] <- 'site mean'
 
 ```{r Save output}
 # Index the columns to save
-springFallBPs <- breaks[,c('site', 'year', 'finalSpringBP', 'sourceSpringBP', 'finalFallBP', 'sourceFallBP')]
+springFallBPs <- breaks[,c('site', 'year', 'finalSpringBP', 'sourceSpringBP', 'finalFallBP', 'sourceFallBP','quantileLo','quantileHi')]
 
 # Save the output
 save(springFallBPs, file = paste0(dataOutDir, outFile, '.RData'))
