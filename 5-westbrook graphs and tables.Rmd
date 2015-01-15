@@ -1,6 +1,9 @@
 cross-validation
 rmse by river,year
 ```{r libraries}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
 library(gridExtra)
 ```
 
@@ -15,10 +18,18 @@ dataLocalDir <- paste0(baseDir, '/localData/')
 graphsDir <- paste0(baseDir, '/graphs/')
 codeDir <- paste0(baseDir, '/code/')
 
+load( paste0(dataLocalDir,'validation.RData') )  # this is big, so only load when necessary
 load(paste0(dataLocalDir,'means.RData'))
 load(paste0(dataLocalDir,'tempDataSyncSUsed.RData'))
 #load(paste0(dataLocalDir,'tempDataSync.RData'))
 
+```
+
+```{r table of obs}
+ftable(tempDataSync$year,tempDataSync$site)
+ftable(tempDataSyncS$year,tempDataSyncS$riverOrdered)
+
+#paste into excel and manipulate table
 ```
 
 
@@ -46,6 +57,7 @@ ggplot(airTempComparison,aes(meanAirTemp_WB,meanAirTemp_Day))+
 
 ggsave( file=paste0(graphsDir,'ggAirTempComparison.png'), plot=ggAirTempComparison, dpi=600 , width=6,height=5, units='in', scale=2 )
 
+summary( lm( meanAirTemp_Day ~ meanAirTemp_WB*factor(year), data = airTempComparison ) )
 
 ggplot(airTempComparison,aes(dOY,meanAirTemp_Day))+
   geom_point()+
@@ -90,8 +102,56 @@ e$river[ e$site == 'MAUSGS_WB_MITCHELL' ] <- 'WB MITCHELL'
 e$river[ e$site == 'MAUSGS_WB_OBEAR' ] <- 'WB OBEAR' 
 e$river[ e$site == 'MAUSGS_WB_JIMMY' ] <- 'WB JIMMY' 
 e$riverOrdered <- factor(e$river,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL','WB OBEAR'), ordered=T)
+e$month <- as.numeric(strftime(e$date, "%m"))
 
-ggplot(e, aes(dOY,temp)) + geom_point() + facet_grid(year~riverOrdered)
+ggplot(e[e$river=='WEST BROOK',], aes(dOY,temp)) + geom_line() + facet_wrap(~year)
+
+#ggplot(e, aes(factor(month),temp)) + geom_violin() + facet_grid(year~river)
+
+tempDataSyncS$month <- as.numeric(strftime(tempDataSyncS$date, "%m"))
+tempDataSyncS$month <- factor(tempDataSyncS$month,levels=1:12,ordered=T)
+meanByMonthRiverYear <- tempDataSyncS %>% group_by(month,riverOrdered,year) %>% 
+  summarize(meanByMonthRiverYear=mean(temp),nMonthRiverYear=n())
+meanByMonthRiver <- tempDataSyncS %>% group_by(month,riverOrdered) %>% 
+  summarize(meanByMonthRiver=mean(temp),nMonthRiver=n())
+meanByMonth <- tempDataSyncS %>% group_by(month) %>% 
+  summarize(meanByMonth=mean(temp),nMonth=n())
+
+tempDataSyncS <- left_join(tempDataSyncS,meanByMonthRiverYear,by=c("riverOrdered", "year", "month"))
+tempDataSyncS <- left_join(tempDataSyncS,meanByMonthRiver,by=c("riverOrdered", "month"))
+tempDataSyncS <- left_join(tempDataSyncS,meanByMonth,by=c("month"))
+
+tempDataSyncS$month <- factor(tempDataSyncS$month,levels=1:12,ordered=T)
+
+#tried using meanByMonthRiver directly in a separate geom_point(aes(,,meanByMonthRiver)), but ggplot reorder the factors when months in meanByMonthRiver were present in meanByMonthRiver but not in tempDatSyncS. Ended up just merging meanByMonthRiver into tempDataSycnS
+ggV <- list()
+for(r in unique(tempDataSyncS$riverOrdered)){
+  ggV[[r]] <- 
+    
+   ggplot(tempDataSyncS[tempDataSyncS$riverOrdered==r & tempDataSyncS$nMonthRiverYear >= 20 & tempDataSyncS$year >=2003,], aes((month),temp)) + 
+    geom_violin() + 
+    geom_point(aes((month),meanByMonth),shape=16,size=2) +
+    geom_point(aes((month),meanByMonthRiver),shape=1,size=3) +
+    geom_point(aes((month),meanByMonthRiverYear),shape=95,size=5) +
+    scale_x_discrete('Month') +
+    scale_y_continuous("Temperature (C)") +
+    theme_bw(base_size=10)+
+    ggtitle(r) +
+    theme(plot.title = element_text(size=10),
+          strip.text = element_text(size=8)) +
+    facet_wrap(~year)
+
+  print(ggV[[r]])
+  #  ggsave( file=paste0(graphsDir,'ggViolin_',r,'.png'), plot=ggV[[r]], dpi=600 , width=6,height=5, units='in', scale=2 )
+
+}
+ggViolin <- arrangeGrob(ggV[[1]],ggV[[2]],ggV[[3]],ggV[[4]], ncol=2)#, widths=c(5,1.5))  
+
+  ggsave( file=paste0(graphsDir,'ggViolin.png'), plot=ggViolin, dpi=600 , width=9,height=5, units='in', scale=2 )
+
+
+
+ggplot(e, aes(dOY,temp)) + geom_line(aes(color=factor(year))) + coord_polar() + facet_wrap(~river)
 
 ###
 ggRawWB <- 
@@ -136,6 +196,8 @@ ggsave( file=paste0(graphsDir,'rawWB.png'), plot=rawWB, dpi=600 , width=6,height
 
 
 ```{r characterize years - hot, cold seasons}
+ggplot(tempDataSyncS, aes(dOY,temp)) + geom_point() + facet_grid(year~riverOrdered)
+
 
 ggGam <- 
 ggplot(tempDataSyncS,aes(dOYInt,temp)) + geom_point() +geom_smooth(se=F,color='white',size=2.5) +
@@ -147,17 +209,45 @@ ggsave( file=paste0(graphsDir,'ggGam.png'), plot=ggGam, dpi=600 , width=6,height
 
 
 gGam <- gam(temp~s(dOY),data=tempDataSyncS)
-g <- data.frame(s=tempDataSyncS$site,y=tempDataSyncS$year,dOY=tempDataSyncS$dOY,r=gGam$residuals,f=gGam$fitted.values)
+g <- data.frame(s=tempDataSyncS$site,y=tempDataSyncS$year,dOY=tempDataSyncS$dOY,t=tempDataSyncS$temp,r=gGam$residuals,f=gGam$fitted.values)
 ggplot(g, aes(dOY,r)) +geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
 
 gSum <- 
   g %>%
   group_by(s,y)%>%
-  mutate( cR = cumsum(r) )
+  mutate( rL = lag( r ),
+          delta = r - rL,
+          cR = cumsum(r) )
 
-ggplot(gSum, aes(dOY,cR)) + geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
+ggplot(gSum, aes(dOY,cR,color=factor(y))) + geom_point() + geom_hline(yintercept=0) + facet_wrap(~s)
+ggplot(gSum, aes(dOY,delta, color=factor(y))) + geom_line() + geom_hline(yintercept=0) + facet_wrap(~s)
 
 
+for(yy in sort(unique(gSum$y))){
+gg <-   
+ggplot(filter(gSum,y==yy), aes(dOY,t)) + geom_point() + geom_line() +
+  geom_line(aes(dOY,f),color='red')+
+  geom_hline(yintercept=0) + facet_wrap(~s) +
+  ggtitle(yy)
+print(gg)
+
+gg2 <- 
+  ggplot(filter(gSum,y==yy), aes(dOY,cR)) + geom_point(color='red') + geom_point  (aes(dOY,r)) + geom_hline(yintercept=0) + facet_grid(~s)+
+  ggtitle(yy)
+print(gg2)
+}
+
+
+
+  ggplot(filter(gSum,y==yy), aes(dOY,delta)) + geom_line(color='red') + geom_line  (aes(dOY,r)) + geom_hline(yintercept=0) + facet_grid(~s)+ggtitle(yy)
+
+gSum %>%
+  group_by(s,y) %>%
+ # do(acf(.$r,main=unique(paste(.$s,.$y))))
+do(plot(abs(fft(.$r)),main=unique(paste(.$s,.$y))))
+
+f=fft(gSum$r)
+plot(abs(f))
 ```
 
 
@@ -282,11 +372,12 @@ ggsave( file=paste0(graphsDir,'ggBP.png'), plot=ggBP, dpi=600, width=5,height=5,
 pC <- predCubic(means)
 
 ggCubic <- 
-  ggplot(pC$predCubic, aes(dOY,pred)) + geom_line(aes(group=factor(year)),size=1.25) +
+  ggplot(pC$predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.25) +
     geom_point(aes(maxX,maxY), color='white',data = pC$bY) +
     scale_x_continuous('Day of year') +
     scale_y_continuous( expression(paste("Cubic trend effect ( ",degree, "C)", sep = ""))) +
-    theme_bw(base_size=20)
+    theme_bw(base_size=20) +
+    facet_wrap(~year)
 
 ggsave( file=paste0(graphsDir,'ggCubic.png'), plot=ggCubic, dpi=600 , width=6,height=6, units='in' )
 
@@ -324,11 +415,46 @@ summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus1',] ))
 summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus2',] ))
 ```
 
+```{r recalculate RMSE for test/val cross validation}
+# need to calculate the rmse for just the validation set and just the test set. separate these by 'keep' the days that were used in the test set.
+
+
+# melt dOYKeep1
+keep <- as.data.frame(dOYKeep1) %>%
+  mutate( scenario = 1:nrow(dOYKeep1) ) %>%
+  gather( scenario, na.rm=T ) 
+  
+keep <- keep[,c(1,3)] # cant get this to work in dplyr. dplyr named the first 2 cols'scenario' 
+
+keep$s_d <- paste(keep$scenario,keep$value,sep='_')
+predictSummary$s_d <- paste(predictSummary$scenario,predictSummary$dOYInt,sep='_')
+predictSummary$outYear <- predictSummary$year == predictSummary$yearOut 
+
+pS <- predictSummary %>%
+  #group_by( scenario ) %>%
+  mutate( inKeep = s_d %in% keep$s_d ) %>%
+  group_by( scenario,rivsIndex,year,outYear,inKeep ) %>%
+  summarise( residByKeep = rmse( resid ) )
+
+ggplot(pS, aes(inKeep,residByKeep, color=factor(rivsIndex))) +
+  geom_jitter() +
+ # geom_line() +
+  facet_wrap(~scenario)
+
+ggplot(pS, aes(residByKeep,color=factor(inKeep)))+
+  geom_freqpoly() +
+  facet_grid(scenario~rivsIndex+outYear)
+```  
+  
 
 ```{r plots for cross-validation}
 load( paste0(dataLocalDir, "r.RData"))
 
 #ggplot( r[r$incompleteYear & !is.na(r$riverOrdered),], aes(incompleteIndex,diff)) + geom_point()+facet_wrap(~rivsIndex)
+
+####
+#cross-valiation for MS
+
 
 
 meansByS <-   
@@ -396,7 +522,7 @@ ggsave( file=paste0(graphsDir,'ggMiddleScenarios.png'), plot=ggMiddleScenarios, 
 
 
 #6=2002, 11=2007, 13=2009
-for(i in 13:21){print(ggObsPred[[16+16*i]])}
+for(i in 13:21){print(ggObsPred[[16+1*i]])}
 
 
 ```
