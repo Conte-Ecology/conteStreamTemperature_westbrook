@@ -5,6 +5,7 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(gridExtra)
+library(conteStreamTemperature)
 ```
 
 
@@ -18,7 +19,6 @@ dataLocalDir <- paste0(baseDir, '/localData/')
 graphsDir <- paste0(baseDir, '/graphs/')
 codeDir <- paste0(baseDir, '/code/')
 
-load( paste0(dataLocalDir,'validation.RData') )  # this is big, so only load when necessary
 load(paste0(dataLocalDir,'means.RData'))
 load(paste0(dataLocalDir,'tempDataSyncSUsed.RData'))
 #load(paste0(dataLocalDir,'tempDataSync.RData'))
@@ -417,33 +417,93 @@ summary(lm( tempAdj ~ year, data=bYM[bYM$variable == 'dOYPlus2',] ))
 
 ```{r recalculate RMSE for test/val cross validation}
 # need to calculate the rmse for just the validation set and just the test set. separate these by 'keep' the days that were used in the test set.
-
+load( paste0(dataLocalDir,'validation.RData') )  # this is big, so only load when necessary
 
 # melt dOYKeep1
 keep <- as.data.frame(dOYKeep1) %>%
   mutate( scenario = 1:nrow(dOYKeep1) ) %>%
   gather( scenario, na.rm=T ) 
   
-keep <- keep[,c(1,3)] # cant get this to work in dplyr. dplyr named the first 2 cols'scenario' 
+keep <- keep[,c(1,3)] # can't get this to work in dplyr. dplyr named the first 2 cols'scenario' 
 
 keep$s_d <- paste(keep$scenario,keep$value,sep='_')
 predictSummary$s_d <- paste(predictSummary$scenario,predictSummary$dOYInt,sep='_')
-predictSummary$outYear <- predictSummary$year == predictSummary$yearOut 
+#predictSummary$outYear <- predictSummary$year == predictSummary$yearOut 
 
-pS <- predictSummary %>%
+# test=T if 
+
+# rivsIndex  r   year       dOYInt
+#     1     WB   yearOut    s_d in keep$s_d 
+#     2     any  yearOut    s_d in keep$s_d 
+predictSummary$test <- F
+predictSummary$test[predictSummary$rivsIndex == 1 & 
+                    predictSummary$r == "WEST BROOK" &  
+                    predictSummary$year == predictSummary$yearOut &
+                    predictSummary$s_d %!in% keep$s_d  
+                   ] <- T
+predictSummary$test[predictSummary$rivsIndex == 2 & 
+                    predictSummary$year == predictSummary$yearOut &
+                    predictSummary$s_d %!in% keep$s_d  
+                   ] <- T
+table(predictSummary$test)
+
+pS1 <- predictSummary %>%
   #group_by( scenario ) %>%
-  mutate( inKeep = s_d %in% keep$s_d ) %>%
-  group_by( scenario,rivsIndex,year,outYear,inKeep ) %>%
-  summarise( residByKeep = rmse( resid ) )
+  #mutate( inKeep = s_d %in% keep$s_d ) %>%
+#  group_by( scenario,rivsIndex,year,test ) %>%
+  group_by( scenario,rivsIndex,test ) %>%
+  summarise( rmseByKeep = rmse( resid ),nDays=n() )
+  #mutate( rivOut = paste0(rivsIndex,outYear) )
 
-ggplot(pS, aes(inKeep,residByKeep, color=factor(rivsIndex))) +
-  geom_jitter() +
- # geom_line() +
-  facet_wrap(~scenario)
+#ggplot(pS1, aes(scenario,nDays,color=factor(rivsIndex)))+geom_point() +facet_grid(test~year)
+#ggplot(pS1, aes(scenario,rmseByKeep,color=factor(rivsIndex)))+geom_point() +facet_grid(test~year)
 
-ggplot(pS, aes(residByKeep,color=factor(inKeep)))+
-  geom_freqpoly() +
-  facet_grid(scenario~rivsIndex+outYear)
+# get base-case (training) rmse for merging
+meanTrainData <- pS1 %>%
+  filter( !test ) %>%
+  rename( rmseTrain = rmseByKeep ) %>%
+  ungroup() %>%
+ # select(scenario, rivsIndex, year, rmseTrain)
+ select(scenario, rivsIndex, rmseTrain)
+
+
+#pS <- left_join(pS1,meanTrainData, by=c("scenario", "rivsIndex", "year")) %>%
+pS <- left_join(pS1,meanTrainData, by=c("scenario", "rivsIndex")) %>%
+  mutate( diff = rmseByKeep - rmseTrain )
+
+s28 <- filter(pS,scenario==28 ) %>%
+  #mutate(o=outYear*1) %>%
+  unite(rO,test,rivsIndex,sep="") %>%
+ # select(-outYear) %>%
+  spread(rO,rmseByKeep) 
+ 
+ggplot(s28, aes(year,FALSE1)) +
+  geom_point() +
+  geom_point(aes(year,FALSE2), color='red') +
+  geom_line(aes(year,FALSE2), color='red') +
+  geom_point(aes(year,TRUE1), color='blue') +
+  geom_line(aes(year,TRUE1), color='blue') +
+  geom_point(aes(year,TRUE2), color='darkgreen') +
+  geom_line(aes(year,TRUE2), color='darkgreen')
+
+
+
+# get means across years
+pS2 <- pS %>%
+  #filter(outYear) %>%
+  group_by(scenario,rivsIndex,test) %>%
+  summarize(rmseMean=mean(rmseByKeep),rmseSD=sd(rmseByKeep),n=n(), 
+            meanDiff=mean(diff),sdDiff=sd(diff)) 
+
+ggplot( filter(pS, scenario %in% 14:22 & test), aes(scenario,rmseByKeep,color=factor(rivsIndex) ) )+
+  geom_point(  ) +
+  geom_smooth(method='lm'
+#              , formula=y~x+I(x^2)
+              ,se=F)+#,color='black') +
+  scale_x_continuous('Number of days included in estimation') +
+  scale_y_continuous('Difference in RMSE from base case') +
+  theme_bw(base_size=25) +
+  theme(legend.position="none")    +facet_wrap(~year)
 ```  
   
 

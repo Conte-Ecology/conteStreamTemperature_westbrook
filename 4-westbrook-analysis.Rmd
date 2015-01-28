@@ -15,6 +15,7 @@ correlation of ar with other variables, airTemplagged1 correlated?
 
 ```{r results = 'hide', warning=FALSE, message=FALSE}
 library(knitr)
+library(rjags)
 library(ggplot2)
 library(ggmcmc) # this uses plyr which conflicts with dplyr and makes group_by not work. make sure to load dplyr after this
 library(nlme)
@@ -577,7 +578,7 @@ for ( i in 1:( nrow(years) + 0 ) ){
 } #river bracket
 predictSummary <- na.omit(predictSummary)
 
-save( rmseByOut,rmseByOutAll,predictSummary,overlap,ggObsPred,ggCubic, file = paste0(dataLocalDir,'validation.RData'))
+save( dOYKeep1,rmseByOut,rmseByOutAll,predictSummary,overlap,ggObsPred,ggCubic, file = paste0(dataLocalDir,'validation.RData'))
 
 #beep()
 
@@ -622,7 +623,85 @@ save( rmseByOut,rmseByOutAll,predictSummary,overlap,ggObsPred,ggCubic, file = pa
 
 ```
 
-```{r deviance from base for rmse}
+```{r striaght up cross-validation - leave out 30% randomly across years}
+
+# ugly repeat of code, but mostly repeating above with a simpler loop
+
+n.burn <- 100
+n.it <- 50
+n.thin <- 2
+
+rm(rmseByOutAllCV)
+ rmseByOutAllCV <-  NA
+
+train <- c(rep(F,10),rep(T,10)) 
+
+# loop over propOut
+propOut <- seq(0,0.5,0.1)
+for (p in propOut)
+ # loop over replicates
+ for ( i in 1:20 ){
+
+  dat <- tempDataSyncS
+  
+  dat$tempOrig <- dat$temp
+  dat$keep <- runif(nrow(dat)) > p #0.3  
+  if (!train[i]) dat$temp <- ifelse( dat$keep, dat$temp, NA )  #set 30% of temp values to NA for non-training runs
+   
+  dat <- indexDeployments( data.frame(dat) )
+  firstObsRows <- createFirstRows(dat)
+  evalRows <- createEvalRows(dat)
+  
+  dat$eval <- dat$rowNum %in% evalRows
+  dat$first <- dat$rowNum %in% firstObsRows
+
+  print(c(p,i,table(is.na(dat$temp))))
+  
+    print( system.time(M.wb <- modelRegionalTempWB(dat, firstObsRows, evalRows,
+                                          data.fixed=data.fixed, 
+                                          data.random.years=data.random.years, 
+                                          n.burn = n.burn, n.it = n.it, n.thin = n.thin, nc = 3,
+                                          coda = coda.tf, param.list = monitor.params)) )
+  
+    save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmcValidateCV_",p,i,".RData"))
+  
+  # add mean residuals and predicted values from the jags run
+  # this replaces Dan's loop. It's a lot more code but a lot faster.
+  tempDataSyncS <- addStreamMuResid(M.wb,tempDataSyncS)
+
+  # residuals based on predicted temps and acutal observed temps ( including the temps left out )
+  tempDataSyncS$resid <- tempDataSyncS$temp - tempDataSyncS$pred.wb
+
+  tempDataSyncS$keep <- dat$keep
+  
+  rmseByKeep <- tempDataSyncS %>% 
+                  group_by( keep ) %>% 
+                  summarise( rmse = rmse( resid ) )
+  
+  #rm(rmse)
+  print(c( rmse(tempDataSyncS$resid),rmse(tempDataSyncS$resid.wb),rmseByKeep) )
+
+  rmseByOutAllCV <- rbind(rmseByOutAllCV,cbind(propOut=p,train=train[i],rmseAll=rmse(tempDataSyncS$resid),rmseByKeep))
+
+  } # rep bracket 
+} #proportion of data bracket
+
+summ <- rmseByOutAllCV %>% group_by( p,train ) %>% summarise( mean=mean( rmse ), sd=sd( rmse ), 
+                                                            loCI= quantile(rmse,probs=0.025,na.rm=T),hiCI= quantile(rmse,probs=0.0975,na.rm=T) )
+
+
+#predictSummary <- na.omit(predictSummary)
+
+save( rmseByOutAllCV,summ, file = paste0(dataLocalDir,'crossValidation30.RData'))
+
+
+
+
+```
+
+
+
+```{r deviance from base for rmse - old}
 # Look at deviance in rmse's from base case
 
 r <- left_join(rmseByOutAll,rmseByComplete)
