@@ -451,25 +451,52 @@ pS1 <- predictSummary %>%
   #group_by( scenario ) %>%
   #mutate( inKeep = s_d %in% keep$s_d ) %>%
 #  group_by( scenario,rivsIndex,year,test ) %>%
-  group_by( scenario,rivsIndex,test ) %>%
+  group_by( r,year,yearOut,scenario,rivsIndex,test ) %>%
   summarise( rmseByKeep = rmse( resid ),nDays=n() )
   #mutate( rivOut = paste0(rivsIndex,outYear) )
+
+
+ggplot(filter(pS1,scenario==28 & test), aes(year,rmseByKeep, color=r,shape=factor(rivsIndex)))+
+  geom_point() +
+  geom_line() +
+  facet_grid(~rivsIndex)
 
 #ggplot(pS1, aes(scenario,nDays,color=factor(rivsIndex)))+geom_point() +facet_grid(test~year)
 #ggplot(pS1, aes(scenario,rmseByKeep,color=factor(rivsIndex)))+geom_point() +facet_grid(test~year)
 
 # get base-case (training) rmse for merging
+# just broken down by river and year
 meanTrainData <- pS1 %>%
   filter( !test ) %>%
   rename( rmseTrain = rmseByKeep ) %>%
-  ungroup() %>%
- # select(scenario, rivsIndex, year, rmseTrain)
- select(scenario, rivsIndex, rmseTrain)
-
-
+  group_by(r,year) %>%
+  summarize( rmseByRYearForTrain = mean(rmseTrain))
+  
 #pS <- left_join(pS1,meanTrainData, by=c("scenario", "rivsIndex", "year")) %>%
-pS <- left_join(pS1,meanTrainData, by=c("scenario", "rivsIndex")) %>%
-  mutate( diff = rmseByKeep - rmseTrain )
+pS <- left_join(pS1,meanTrainData, by=c('r','year')) %>%
+  mutate( diff = rmseByKeep - rmseByRYearForTrain )
+
+ggplot(filter(pS,scenario==28 & year==yearOut ), aes(year,diff, color=r,shape=factor(rivsIndex)))+
+  geom_point() +
+  geom_line() +
+  facet_grid(~rivsIndex)
+
+# Table for MS
+# summary across rivers, all years
+filter(pS,scenario==28 ) %>%
+  group_by(test,rivsIndex) %>%
+  summarize( mDiff=mean(diff),sDiff=sd(diff),
+             mRmse=mean(rmseByKeep),sRmse=sd(rmseByKeep),n=n())
+
+
+# summary across rivers for non-test data
+filter(pS1,scenario==28 & !test ) %>%
+  #group_by(rivsIndex) %>%
+  ungroup() %>%
+  summarize( #mDiff=mean(diff),sDiff=sd(diff),
+             mRmse=mean(rmseByKeep),sRmse=sd(rmseByKeep),n=n())
+
+
 
 s28 <- filter(pS,scenario==28 ) %>%
   #mutate(o=outYear*1) %>%
@@ -506,6 +533,26 @@ ggplot( filter(pS, scenario %in% 14:22 & test), aes(scenario,rmseByKeep,color=fa
   theme(legend.position="none")    +facet_wrap(~year)
 ```  
   
+  
+```{r plots for cross validation, randomly left out points}
+
+load( file = paste0(dataLocalDir,'crossValidationPropOut.RData'))
+
+ggplot(summ,aes(propOut,mean,color=keep)) + geom_point()
+
+cvPropOut <- 
+ggplot(filter(rmseByOutAllCV, propOut<0.99),aes(propOut,rmse,shape=keep)) + 
+  geom_point(size=3.5) +
+  scale_x_continuous('Proportion of data left out') +
+  scale_y_continuous('Root mean square error') +
+  theme_bw(base_size=25) +
+  theme(legend.position="none") 
+
+ggsave( file=paste0(graphsDir,'cvPropOut.png'), plot=cvPropOut, dpi=600 , width=7,height=5, units='in', scale=2 )
+
+
+
+```
 
 ```{r plots for cross-validation}
 load( paste0(dataLocalDir, "r.RData"))

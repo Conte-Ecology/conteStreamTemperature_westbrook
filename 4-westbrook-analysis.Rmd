@@ -406,33 +406,6 @@ dOYKeep1[27,1:length(sample(loDOY:hiDOY,nDays))] <- sample(loDOY:hiDOY,nDays)
 
 dOYKeep1[28,] <- NA # just as a reminder. No data for the year case
 
-# pairs of random picks
-# randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
-# dOYKeep1[6,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
-# randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
-# dOYKeep1[7,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
-# randPickPairs1 <- sample(loDOY:hiDOY,round(nDays/2))
-# dOYKeep1[8,1:length(c(randPickPairs1,randPickPairs1+1))] <- c(randPickPairs1,randPickPairs1+1)
-
-
-#dOYKeep1[14,1:length((mDOY-nDays*5):(mDOY+nDays*5-1))] <- (mDOY-nDays*5):(mDOY+nDays*5-1)
-
-# #spread from the middle to the right
-# dOYKeep1[15,1:length((mDOY):(mDOY+nDays/2-1)) ] <- (mDOY):(mDOY+nDays/2-1)
-# dOYKeep1[16,1:length((mDOY):(mDOY+nDays*1-1)) ] <- (mDOY):(mDOY+nDays*1-1)
-# dOYKeep1[17,1:length((mDOY):(mDOY+nDays*2-1)) ] <- (mDOY):(mDOY+nDays*2-1)
-# dOYKeep1[18,1:length((mDOY):(mDOY+nDays*3-1)) ] <- (mDOY):(mDOY+nDays*3-1)
-# dOYKeep1[19,1:length((mDOY):(mDOY+nDays*4-1)) ] <- (mDOY):(mDOY+nDays*4-1)
-# #dOYKeep1[20,1:length((mDOY):(mDOY+nDays*5-1)) ] <- (mDOY):(mDOY+nDays*5-1)
-# 
-# #spread from the middle to the left
-# dOYKeep1[21,1:length((mDOY-nDays/2):(mDOY))] <- (mDOY-nDays/2):(mDOY)
-# dOYKeep1[22,1:length((mDOY-nDays*1):(mDOY))] <- (mDOY-nDays*1):(mDOY)
-# dOYKeep1[23,1:length((mDOY-nDays*2):(mDOY))] <- (mDOY-nDays*2):(mDOY)
-# dOYKeep1[24,1:length((mDOY-nDays*3):(mDOY))] <- (mDOY-nDays*3):(mDOY)
-# dOYKeep1[25,1:length((mDOY-nDays*4):(mDOY))] <- (mDOY-nDays*4):(mDOY)
-# #dOYKeep1[26,1:length((mDOY-nDays*5):(mDOY))] <- (mDOY-nDays*5):(mDOY)
-
 
 rivs <- list()
 rivs[[1]] <- "WEST BROOK"
@@ -623,7 +596,7 @@ save( dOYKeep1,rmseByOut,rmseByOutAll,predictSummary,overlap,ggObsPred,ggCubic, 
 
 ```
 
-```{r striaght up cross-validation - leave out 30% randomly across years}
+```{r striaght up cross-validation - leave out p randomly across years}
 
 # ugly repeat of code, but mostly repeating above with a simpler loop
 
@@ -634,19 +607,17 @@ n.thin <- 2
 rm(rmseByOutAllCV)
  rmseByOutAllCV <-  NA
 
-train <- c(rep(F,10),rep(T,10)) 
-
 # loop over propOut
-propOut <- seq(0,0.5,0.1)
-for (p in propOut)
+propOut <- c(0,0.05,seq(0.1,0.9,0.1),0.95,0.99)
+for (p in propOut){
  # loop over replicates
- for ( i in 1:20 ){
+ for ( i in 1:10 ){
 
   dat <- tempDataSyncS
   
   dat$tempOrig <- dat$temp
   dat$keep <- runif(nrow(dat)) > p #0.3  
-  if (!train[i]) dat$temp <- ifelse( dat$keep, dat$temp, NA )  #set 30% of temp values to NA for non-training runs
+  if ( p>0 ) dat$temp <- ifelse( dat$keep, dat$temp, NA )  #set p of temp values to NA for non-training runs
    
   dat <- indexDeployments( data.frame(dat) )
   firstObsRows <- createFirstRows(dat)
@@ -676,27 +647,53 @@ for (p in propOut)
   
   rmseByKeep <- tempDataSyncS %>% 
                   group_by( keep ) %>% 
-                  summarise( rmse = rmse( resid ) )
+                  summarise( rmse = rmse( resid ), n=n() )
   
   #rm(rmse)
   print(c( rmse(tempDataSyncS$resid),rmse(tempDataSyncS$resid.wb),rmseByKeep) )
 
-  rmseByOutAllCV <- rbind(rmseByOutAllCV,cbind(propOut=p,train=train[i],rmseAll=rmse(tempDataSyncS$resid),rmseByKeep))
+  rmseByOutAllCV <- rbind(rmseByOutAllCV,cbind(propOut=p,rmseAll=rmse(tempDataSyncS$resid),rmseByKeep))
 
   } # rep bracket 
-} #proportion of data bracket
 
-summ <- rmseByOutAllCV %>% group_by( p,train ) %>% summarise( mean=mean( rmse ), sd=sd( rmse ), 
-                                                            loCI= quantile(rmse,probs=0.025,na.rm=T),hiCI= quantile(rmse,probs=0.0975,na.rm=T) )
+summ <- rmseByOutAllCV %>% 
+          group_by( keep,propOut ) %>% 
+            summarise( mean=mean( rmse ), sd=sd( rmse ),
+                       loCI= quantile(rmse,probs=0.025,na.rm=T),
+                       hiCI= quantile(rmse,probs=0.0975,na.rm=T),
+                       meanN=mean(n) )
 
 
 #predictSummary <- na.omit(predictSummary)
 
-save( rmseByOutAllCV,summ, file = paste0(dataLocalDir,'crossValidation30.RData'))
+save( rmseByOutAllCV,summ, file = paste0(dataLocalDir,'crossValidationPropOut.RData'))
+
+#print(ggplot(summ,aes(propOut,mean,color=keep)) + geom_point())
+#print(ggplot(rmseByOutAllCV,aes(propOut,rmse,color=keep)) + geom_point())
+
+} #proportion of data bracket
 
 
 
 
+
+
+tempDataSyncS %>% select(keep,temp,resid,pred.wb) %>% head(20)
+dat %>% select(keep,temp,resid,pred.wb) %>% head(20)
+
+
+y=2011
+  ggplot(tempDataSyncS
+        [tempDataSyncS$year %in% y,]
+         , aes(dOY, pred.wb)) + 
+    geom_point(aes(dOY,temp),color='blue')+
+    geom_line(aes(dOY,temp),color='blue')+
+    geom_line(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% y,])+
+    geom_point(aes(dOYS ,airTemp),color='black', data=tempDataSync[tempDataSync$year %in% y,])+
+    geom_point(aes(color=keep))+#'red') +
+    #geom_point( aes(dOY,1), data=data.frame(dOY=dOYKeep))+
+#    ggtitle(paste(inc,'rivsIndex = ',rivsIndex,' Scenario = ',k,' Year =',y)) +
+    facet_wrap(~riverOrdered)
 ```
 
 
