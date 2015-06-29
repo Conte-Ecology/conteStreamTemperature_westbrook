@@ -2,8 +2,11 @@ cross-validation
 rmse by river,year
 ```{r libraries}
 library(ggplot2)
+library(ggmcmc) # this uses plyr which conflicts with dplyr and makes group_by not work. make sure to load dplyr after this
 library(dplyr)
 library(tidyr)
+library(gridExtra)
+library(gam)
 library(gridExtra)
 library(conteStreamTemperature)
 ```
@@ -42,6 +45,7 @@ airTempComparison <- left_join( airTempComparison,springFallBPs[springFallBPs$si
 
 # Clip to syncronized season
 airTempComparison <- filter(airTempComparison, dOY >= finalSpringBP & dOY <= finalFallBP)
+airTempComparison$yearF <- factor(airTempComparison$year)
 
 summary(lm(meanAirTemp_WB~meanAirTemp_Day, data=airTempComparison))
 
@@ -105,6 +109,8 @@ e$riverOrdered <- factor(e$river,levels=c('WEST BROOK','WB JIMMY','WB MITCHELL',
 e$month <- as.numeric(strftime(e$date, "%m"))
 
 ggplot(e[e$river=='WEST BROOK',], aes(dOY,temp)) + geom_line() + facet_wrap(~year)
+ggplot(e, aes(dOY,temp)) + geom_line() + geom_line(aes(dOY,airTemp),color='red') +
+  geom_line(aes(dOY,prcp),color='darkgreen') + facet_grid(river~year)
 
 #ggplot(e, aes(factor(month),temp)) + geom_violin() + facet_grid(year~river)
 
@@ -123,12 +129,28 @@ tempDataSyncS <- left_join(tempDataSyncS,meanByMonth,by=c("month"))
 
 tempDataSyncS$month <- factor(tempDataSyncS$month,levels=1:12,ordered=T)
 
+riverLabellerWB <- function(value){
+  value <- as.character(value)
+  #if (var=="river") { 
+    value[value=="WEST BROOK"] <- "WB"
+    value[value=="WB JIMMY"] <- "OL"
+    value[value=="WB MITCHELL"] <- "OS"
+    value[value=="WB OBEAR"] <- "I"
+  #}
+  return(value)
+}
+
+tempDataSyncS$riverMS <- riverLabellerWB(tempDataSyncS$riverOrdered)
+tempDataSyncS$riverMS <- factor(tempDataSyncS$riverMS,levels=c("WB","OL","OS","I"), ordered=T)
+
+
+
 #tried using meanByMonthRiver directly in a separate geom_point(aes(,,meanByMonthRiver)), but ggplot reorder the factors when months in meanByMonthRiver were present in meanByMonthRiver but not in tempDatSyncS. Ended up just merging meanByMonthRiver into tempDataSycnS
 ggV <- list()
-for(r in unique(tempDataSyncS$riverOrdered)){
+for(r in unique(tempDataSyncS$riverMS)){
   ggV[[r]] <- 
     
-   ggplot(tempDataSyncS[tempDataSyncS$riverOrdered==r & tempDataSyncS$nMonthRiverYear >= 20 & tempDataSyncS$year >=2003,], aes((month),temp)) + 
+   ggplot(tempDataSyncS[tempDataSyncS$riverMS==r & tempDataSyncS$nMonthRiverYear >= 20 & tempDataSyncS$year >=2003,], aes((month),temp)) + 
     geom_violin() + 
     geom_point(aes((month),meanByMonth),shape=16,size=2) +
     geom_point(aes((month),meanByMonthRiver),shape=1,size=3) +
@@ -145,7 +167,7 @@ for(r in unique(tempDataSyncS$riverOrdered)){
   #  ggsave( file=paste0(graphsDir,'ggViolin_',r,'.png'), plot=ggV[[r]], dpi=600 , width=6,height=5, units='in', scale=2 )
 
 }
-ggViolin <- arrangeGrob(ggV[[1]],ggV[[2]],ggV[[3]],ggV[[4]], ncol=2)#, widths=c(5,1.5))  
+ggViolin <- arrangeGrob(ggV[[4]],ggV[[1]],ggV[[2]],ggV[[3]], ncol=2)#, widths=c(5,1.5))  
 
   ggsave( file=paste0(graphsDir,'ggViolin.png'), plot=ggViolin, dpi=600 , width=9,height=5, units='in', scale=2 )
 
@@ -194,10 +216,29 @@ ggsave( file=paste0(graphsDir,'rawWB.png'), plot=rawWB, dpi=600 , width=6,height
 
 ```
 
+```{r correlations among streams}
+
+forCorr <- tempDataSyncS %>%
+  select(date,temp,riverMS) %>%
+  spread(riverMS,temp) 
+
+  forCorr$year <- factor(as.numeric(strftime(forCorr$date, "%Y")))
+  forCorr$dOY <- (as.numeric(strftime(forCorr$date, "%j")))
+  
+corr <- cor(forCorr[,2:5],use="complete.obs")
+pairs(forCorr[,2:5])
+
+ggplot(forCorr, aes(OL,I)) + 
+  geom_point( aes(color=dOY) ) +
+  scale_color_gradient(low='blue',high='red') +
+  geom_abline(intercept=0,slope=1) +
+  facet_wrap(~year)
+
+```
+
 
 ```{r characterize years - hot, cold seasons}
 ggplot(tempDataSyncS, aes(dOY,temp)) + geom_point() + facet_grid(year~riverOrdered)
-
 
 ggGam <- 
 ggplot(tempDataSyncS,aes(dOYInt,temp)) + geom_point() +geom_smooth(se=F,color='white',size=2.5) +
@@ -209,37 +250,34 @@ ggsave( file=paste0(graphsDir,'ggGam.png'), plot=ggGam, dpi=600 , width=6,height
 
 
 gGam <- gam(temp~s(dOY),data=tempDataSyncS)
-g <- data.frame(s=tempDataSyncS$site,y=tempDataSyncS$year,dOY=tempDataSyncS$dOY,t=tempDataSyncS$temp,r=gGam$residuals,f=gGam$fitted.values)
-ggplot(g, aes(dOY,r)) +geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
+g <- data.frame(s=tempDataSyncS$riverMS,y=tempDataSyncS$year,dOY=tempDataSyncS$dOY,t=tempDataSyncS$temp,r=gGam$residuals,f=gGam$fitted.values)
+#ggplot(g, aes(dOY,r)) +geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
 
 gSum <- 
   g %>%
+  filter(dOY > (-1.85), !(s == "OS" & y == 2002), !(s == "OS" & y == 2006) ) %>%
   group_by(s,y)%>%
   mutate( rL = lag( r ),
           delta = r - rL,
-          cR = cumsum(r) )
+          cR = cumsum(r),
+          wOrA = 'Water')
 
-ggplot(gSum, aes(dOY,cR,color=factor(y))) + geom_point() + geom_hline(yintercept=0) + facet_wrap(~s)
+ggCResids <- 
+  ggplot(gSum, aes(dOY,cR,color=cR)) + geom_point() + geom_hline(yintercept=0) + 
+    scale_color_gradient2(low='blue', high = 'red',mid='darkgrey') +
+    scale_y_continuous( expression(paste("Cumulative residuals ( ",degree, "C)", sep = ""))) +
+    scale_x_continuous("Standardized day of year") +
+    theme_bw(base_size=18) +
+    theme(legend.position="none") +
+    facet_grid(s~y)
+
+ggsave( file=paste0(graphsDir,'ggCResids.png'), plot=ggCResids, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+
+ggplot(gSum, aes(dOY,cR,color=factor(s))) + geom_point() + geom_hline(yintercept=0) + facet_wrap(~y)
 ggplot(gSum, aes(dOY,delta, color=factor(y))) + geom_line() + geom_hline(yintercept=0) + facet_wrap(~s)
 
-
-for(yy in sort(unique(gSum$y))){
-gg <-   
-ggplot(filter(gSum,y==yy), aes(dOY,t)) + geom_point() + geom_line() +
-  geom_line(aes(dOY,f),color='red')+
-  geom_hline(yintercept=0) + facet_wrap(~s) +
-  ggtitle(yy)
-print(gg)
-
-gg2 <- 
-  ggplot(filter(gSum,y==yy), aes(dOY,cR)) + geom_point(color='red') + geom_point  (aes(dOY,r)) + geom_hline(yintercept=0) + facet_grid(~s)+
-  ggtitle(yy)
-print(gg2)
-}
-
-
-
-  ggplot(filter(gSum,y==yy), aes(dOY,delta)) + geom_line(color='red') + geom_line  (aes(dOY,r)) + geom_hline(yintercept=0) + facet_grid(~s)+ggtitle(yy)
+#ggplot(gSum[gSum$s=="MAUSGS_WEST_BROOK",], aes(dOY,cR,color=factor(y))) + geom_point() + geom_hline(yintercept=0) + coord_polar() + facet_wrap(s~y)
 
 gSum %>%
   group_by(s,y) %>%
@@ -250,29 +288,236 @@ f=fft(gSum$r)
 plot(abs(f))
 ```
 
+```{r air temp trends}
 
+ggplot(tempDataSyncS, aes(dOY,airTemp)) + geom_point() + facet_grid(year~riverOrdered)
+
+# backtransform the z-scores.
+tempDataSyncS$airTempBT <- tempDataSyncS$airTemp*sd(e$airTemp,na.rm=T)+mean(e$airTemp,na.rm=T)
+ggplot(tempDataSyncS, aes(dOY,airTempBT)) + geom_point() + facet_grid(year~riverOrdered)
+
+
+ggGamAT <- 
+ggplot(tempDataSyncS,aes(dOYInt,airTempBT)) + geom_point() +geom_smooth(se=F,color='white',size=2.5) +
+  scale_x_continuous("Day of Year") +
+  scale_y_continuous("Temperature (C)") +
+  theme_bw(base_size=25)
+
+ggsave( file=paste0(graphsDir,'ggGamAT.png'), plot=ggGamAT, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+gGamAT <- gam(airTempBT ~ s(dOY),data=tempDataSyncS)
+gAT <- data.frame(s=tempDataSyncS$riverMS,y=tempDataSyncS$year,dOY=tempDataSyncS$dOY,t=tempDataSyncS$airTempBT,r=gGamAT$residuals,f=gGamAT$fitted.values)
+#ggplot(g, aes(dOY,r)) +geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
+
+gSumAT <- 
+  gAT %>%
+  filter( dOY > (-1.85), !(s == "OS" & y == 2002), !(s == "OS" & y == 2006) ) %>%
+  group_by(s,y)%>%
+  mutate( rL = lag( r ),
+          delta = r - rL,
+          cR = cumsum(r),
+          wOrA = 'Air')
+
+ggCResidsAT <- 
+  ggplot(gSumAT, aes(dOY,cR,color=cR)) + geom_point() + geom_hline(yintercept=0) + 
+    scale_color_gradient2(low='blue', high = 'red',mid='darkgrey') +
+    scale_y_continuous( expression(paste("Cumulative residuals ( ",degree, "C)", sep = ""))) +
+    scale_x_continuous("Standardized day of year") +
+    theme_bw(base_size=18) +
+    theme(legend.position="none") +
+    facet_grid(s~y)
+
+ggsave( file=paste0(graphsDir,'ggCResidsAT.png'), plot=ggCResidsAT, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+```
+ 
+```{r combine water and air temp resids}
+
+gSumBoth <- bind_rows(gSum,gSumAT)
+
+ggCResidsBoth <- 
+  ggplot(gSumBoth[ gSumBoth$wOrA == 'Water', ], aes(dOY,cR,color=cR)) + geom_point() + geom_hline(yintercept=0) + 
+    scale_color_gradient2(low='blue', high = 'red',mid='darkgrey') +
+    scale_y_continuous( expression(paste("Cumulative residuals ( ",degree, "C)", sep = ""))) +
+    scale_x_continuous("Standardized day of year") +
+    geom_line( aes(dOY,cR,color=cR), data=gSumBoth[ gSumBoth$wOrA == 'Air', ] ) +
+    theme_bw(base_size=18) +
+    theme(legend.position="none") +
+    facet_grid(s~y)
+
+ggsave( file=paste0(graphsDir,'ggCResidsBoth.png'), plot=ggCResidsBoth, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+```
+
+```{r air temp, water temp raw data validation graphs}
+
+for(yy in sort(unique(gSum$y))){
+gg <-   
+ggplot(filter(gSumBoth,wOrA == 'Water',y==yy), aes(dOY,t)) + 
+  geom_point(color='red') + 
+  geom_line(color='red') +
+  geom_line(aes(dOY,f),color='red') +
+  
+  geom_point( data=filter(gSumBoth,wOrA == 'Air',y==yy), aes(dOY,t),color='blue') +
+  geom_line( data=filter(gSumBoth,wOrA == 'Air',y==yy), aes(dOY,t),color='blue') +
+  geom_line( data=filter(gSumBoth,wOrA == 'Air',y==yy), aes(dOY,f),color='blue') +
+  geom_hline(yintercept=0) + 
+  facet_grid(wOrA~s) +
+  ggtitle(yy)
+print(gg)
+
+#gg2 <- 
+#  ggplot(filter(gSum,y==yy), aes(dOY,cR)) + geom_point(color='red') + geom_point  (aes(dOY,r)) + geom_hline(yintercept=0) + facet_grid(~s)+
+#  ggtitle(yy)
+#print(gg2)
+}
+
+
+```
+
+```{r precip residuals}
+# prcp is standardized
+# backtransform the z-scores.
+tempDataSyncS$prcpBT <- tempDataSyncS$prcp*sd(e$prcp,na.rm=T) + mean(e$prcp,na.rm=T)
+ggplot(tempDataSyncS, aes(dOY,prcpBT)) + geom_point() + facet_grid(year~riverOrdered)
+
+#ggplot(tempDataSyncS, aes(dOY,prcp)) + geom_point() + facet_grid(year~riverOrdered)
+
+minDOY <- -1.4 # need this to be smaller than for the temp ones because small differences in BPs among rivers make the rivers have very different cumul resids
+
+# get cumulative precip
+cPrcp <- 
+  tempDataSyncS %>%
+  filter( dOY > (minDOY), !(riverMS == "OS" & year == 2002), !(riverMS == "OS" & year == 2006) ) %>%
+  group_by(riverMS,year)%>%
+  mutate( cP = cumsum(prcpBT) )
+
+ggCP <- 
+ggplot(cPrcp,aes(dOY,cP,color=factor(year))) + geom_point() +
+  geom_smooth(se=F,color='white',size=2.5) +
+  scale_x_continuous("Day of Year") +
+  scale_y_continuous("Precip") +
+  theme_bw(base_size=25) 
+#  facet_grid(riverMS~year)
+
+ggsave( file=paste0(graphsDir,'ggCP.png'), plot=ggCP, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+gGamP <- gam(cP ~ s(dOY),data=cPrcp)
+gP <- data.frame(s=cPrcp$riverMS,y=cPrcp$year,dOY=cPrcp$dOY, t=cPrcp$cP, r=gGamP$residuals, f=gGamP$fitted.values )
+#ggplot(gP, aes(dOY,r)) +geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
+
+# get cumul resids
+gSumP <- 
+  gP %>%
+  filter( dOY > (minDOY), !(s == "OS" & y == 2002), !(s == "OS" & y == 2006) ) %>%
+  group_by(s,y)%>%
+  mutate( cR = cumsum(r),
+          wOrA = 'Prcp')
+
+ggplot(gSumP,aes(dOY,cR,color=factor(s))) + geom_point() +
+ # geom_smooth(se=F,color='white',size=2.5) +
+  scale_x_continuous("Day of Year") +
+  scale_y_continuous("Precip") +
+  theme_bw(base_size=25) +
+  facet_wrap(~y)
+
+```
+
+```{r combine water and air temp and precip resids}
+
+gSumAll3 <- bind_rows(gSumBoth,gSumP)
+
+gSumAll3$cRPrcpForGraph <- gSumAll3$cR/100
+
+ggCResidsAll3 <- 
+  ggplot(gSumAll3[ gSumAll3$wOrA == 'Water', ], aes(dOY,cR,color=cR)) + geom_point() + geom_hline(yintercept=0) + 
+    scale_color_gradient2(low='blue', high = 'red',mid='darkgrey') +
+    scale_y_continuous( expression(paste("Cumulative residuals ( ",degree, "C)", sep = ""))) +
+    scale_x_continuous("Standardized day of year") +
+    geom_line( aes(dOY,cR,color=cR), data=gSumAll3[ gSumAll3$wOrA == 'Air', ] ) +
+    geom_line( aes(dOY,cRPrcpForGraph),color='black', data=gSumAll3[ gSumAll3$wOrA == 'Prcp', ] ) +
+    theme_bw(base_size=18) +
+    theme(legend.position="none") +
+    facet_grid(s~y)
+
+ggsave( file=paste0(graphsDir,'ggCResidsBoth.png'), plot=ggCResidsBoth, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+```
+
+```{r calc diff btw water and air resids, compare to precip resids}
+w <- gSumAll3 %>%
+  filter( wOrA == 'Water') %>%
+  rename( cRWater=cR )
+a <- gSumAll3 %>%
+  filter( wOrA == 'Air') %>%
+  select(s,y,dOY,cR) %>%
+  rename( cRAir=cR )
+p <- gSumAll3 %>%
+  filter( wOrA == 'Prcp') %>%
+  select(s,y,dOY,cR) %>%
+  rename( cRPrcp=cR )
+
+wap <- w %>%
+  left_join(.,a) %>%
+  left_join(.,p) %>%
+  mutate( diff = cRWater - cRAir)
+  
+
+  ggplot(wap, aes(dOY,diff,color=diff)) + geom_point() + geom_hline(yintercept=0) + 
+    scale_color_gradient2(low='blue', high = 'red',mid='darkgrey') +
+    scale_y_continuous( expression(paste("Cumulative residuals ( ",degree, "C)", sep = ""))) +
+    scale_x_continuous("Standardized day of year") +
+    geom_line( aes(dOY,cRPrcp/100),color='black' ) +
+    theme_bw(base_size=18) +
+    theme(legend.position="none") +
+    facet_grid(s~y)
+  
+  # all this is very interesting, but too complicated for the MS.
+```
+
+
+```{r variance in the aT and wT residuals}
+
+gSumVar <- 
+gSumBoth %>%
+  group_by(s,y,wOrA) %>%
+  summarize( v = var(r) ) %>%
+  spread(wOrA,v) %>%
+  mutate(ratio = Air/Water)
+
+ggplot( gSumVar, aes( y,ratio )) +
+  geom_point(aes(color=s)) +
+  geom_line(aes(color=s)) +
+  facet_wrap(~s)
+
+
+```
 
 
 Model validation
 
 ```{r obs v pred}
 
+
 #observed vs. predicted
 obsPred <- 
-ggplot(tempDataSyncS[tempDataSyncS$year>2006,], aes(temp, pred.wb)) +
+ggplot(tempDataSyncS[tempDataSyncS$year>=2003,], aes(temp, pred.wb)) +
     geom_point(alpha = 0.3) + 
     geom_abline(intercept=0,slope=1) + 
     scale_x_continuous( expression(paste("Observed temperature ( ",degree, "C)", sep = ""))) +
     scale_y_continuous( expression(paste("Predicted temperature ( ",degree, "C)", sep = ""))) +
     theme_bw(base_size=25) +
-    facet_grid(year~riverOrdered)
+    facet_grid(year~riverMS)
 
-ggsave( file=paste0(graphsDir,'obsPred.png'), plot=obsPred, dpi=600, width=8,height=5, units='in', scale=2 )
+ggsave( file=paste0(graphsDir,'obsPred.png'), plot=obsPred, dpi=500, width=9,height=7, units='in', scale=2 )
+
+summary(lm(pred.wb~temp + factor(year)*temp + riverMS*temp,data=tempDataSyncS[tempDataSyncS$year>=2003,]))
 
 ```
 
 
 ```{r means tables with rHat}
+load( paste0(dataLocalDir,'ggs_wb.RData') )
 
 intersectSeveral <- function(...) { Reduce(intersect, list(...)) } 
 
@@ -284,18 +529,22 @@ keepRows <-
                    grep("rho.B.year",x=ggs.wb$Parameter,invert=TRUE)
                   )
 
-rHat <- unique( ggs_Rhat(ggs.wb[keepRows,])$data )
+rHat <- unique( ggs_rhat_temp(ggs.wb[keepRows,], ggs.wb)$data ) # ggs_rhat has problems because using keepRows strips the attributes
 rHat$Rhat1 <- ifelse(rHat$Rhat < 1,1,rHat$Rhat)
 max(rHat$Rhat1,na.rm=T)
 
 # table of parameter estimates for MS
-m <- left_join( rHat[,c('Parameter','Rhat')], means )
+# decided not to use table in MS?
+m <- left_join( rHat[,c('Parameter','Rhat1')], means )
 
 #ggs_caterpillar(ggs.wb[keepRows,])
 m$gt2 <- ifelse( m$mean > 2, 1,0 )
 m$oP <- factor(m$Parameter,levels=rev( c(
  'B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]','B.0[7]','B.0[8]','B.0[9]','B.0[10]','B.0[11]','B.0[12]','mu.year[1]','mu.year[2]','mu.year[3]','mu.year[4]','ar1Mean','ar1SD','ar1[1]','ar1[2]','ar1[3]','ar1[4]','mu.year[1]','mu.year[2]','mu.year[3]','mu.year[4]','sigma'
  ) ), ordered=T)
+
+m$oP <- 
+plyr::mapvalues(m$oP, from = c('B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]','B.0[7]','B.0[8]','B.0[9]','B.0[10]','B.0[11]','B.0[12]'), to = c('B[0]','B[1]','B[2]','B[3]','B[4]','B[5]','B[6]','B[7]','B[8]','B[9]','B[10]','B[11]'))
 
 # without B.year[]
 # do in two parts to simulate a 'break'
@@ -334,6 +583,8 @@ betas <- arrangeGrob(b1, b2,ncol=2, widths=c(5,1.5))
 
 ggsave( file=paste0(graphsDir,'betas.png'), plot=betas, dpi=600, width=5,height=5, units='in', scale=2 )
 
+data.frame(m) #paste into excel to get ready for appendix table
+
 
 # B.year[] only
 ggplot(m[grep("B.year",m$Parameter,invert=F),], aes(x = mean, y = reorder(Parameter,mean))) + 
@@ -346,23 +597,54 @@ ggplot(m[grep("B.year",m$Parameter,invert=F),], aes(x = mean, y = reorder(Parame
 
 
 ```{r trend in bPs?}
+library(reshape2)
 
-bP <- unique( tempDataSyncS[,c("year","riverOrdered",'finalSpringBP','finalFallBP')] )
-bPM <- melt(bP, id.var=c('year','riverOrdered'))
+bP <- unique( tempDataSyncS[,c("year","riverMS",'finalSpringBP','finalFallBP')] )
+bPM <- melt(bP, id.var=c('year','riverMS'))
+bPM$yearCent <- bPM$year-2008
+bP
+bPM$v2[bPM$variable == 'finalSpringBP'] <- 'Spring break point'
+bPM$v2[bPM$variable == 'finalFallBP'] <- 'Fall break point'
 
 ggBP <- 
-ggplot( bPM[bPM$year>2001,], aes( year,value,color=riverOrdered ) ) +
-  geom_point(aes(shape=riverOrdered),size=5)+
+ggplot( bPM[bPM$year>2001,], aes( year,value, color=riverMS ) ) +
+  geom_point(aes(shape=riverMS),size=5)+
   #geom_line(aes( linetype=riverOrdered)) +
   scale_x_continuous('Year') +
   scale_y_continuous( 'Day of year' ) +
-  geom_smooth(aes( linetype=riverOrdered),method='lm',se=F)+
+  geom_smooth(aes( linetype=riverMS),method='lm',se=F)+
   theme_bw(base_size=25) +
-  facet_wrap(~variable, ncol=1, scales='free')
+  theme(legend.title=element_blank()) +
+  facet_wrap(~v2, ncol=1, scales='free')
 
 ggsave( file=paste0(graphsDir,'ggBP.png'), plot=ggBP, dpi=600, width=5,height=5, units='in', scale=2 )
 
 
+s1 <- (lm(value~yearCent, bPM[bPM$year>2001 & bPM$variable == 'finalSpringBP',]))
+s2 <- (lm(value~yearCent+riverMS, bPM[bPM$year>2001 & bPM$variable == 'finalSpringBP',]))
+s3 <- (lm(value~yearCent*riverMS, bPM[bPM$year>2001 & bPM$variable == 'finalSpringBP',]))
+AIC(s1,s2,s3)
+summary(s1)
+
+
+f1 <- (lm(value~yearCent, bPM[bPM$year>2001 & bPM$variable == 'finalFallBP',]))
+f2 <- (lm(value~yearCent+riverMS, bPM[bPM$year>2001 & bPM$variable == 'finalFallBP',]))
+f3 <- (lm(value~yearCent*riverMS, bPM[bPM$year>2001 & bPM$variable == 'finalFallBP',]))
+AIC(f1,f2,f3)
+summary(f1)
+
+ggBP2 <- 
+ggplot( bPM[bPM$year>2001,], aes( year,value ) ) +
+  geom_point(aes(shape=riverMS),size=5)+
+  #geom_line(aes( linetype=riverOrdered)) +
+  scale_x_continuous('Year') +
+  scale_y_continuous( 'Day of year' ) +
+  geom_smooth(color='black',method='lm',se=F)+
+  theme_bw(base_size=25) +
+  theme(legend.title=element_blank()) +
+  facet_wrap(~v2, ncol=1, scales='free')
+
+ggsave( file=paste0(graphsDir,'ggBP2.png'), plot=ggBP2, dpi=600, width=5,height=5, units='in', scale=2 )
 
 ```
 
@@ -372,12 +654,13 @@ ggsave( file=paste0(graphsDir,'ggBP.png'), plot=ggBP, dpi=600, width=5,height=5,
 pC <- predCubic(means)
 
 ggCubic <- 
-  ggplot(pC$predCubic, aes(dOY,pred)) + geom_line(aes(color=factor(year)),size=1.25) +
+  ggplot(pC$predCubic, aes(dOY,pred, group=year)) + 
+    geom_line(size=1.25) +
     geom_point(aes(maxX,maxY), color='white',data = pC$bY) +
     scale_x_continuous('Day of year') +
     scale_y_continuous( expression(paste("Cubic trend effect ( ",degree, "C)", sep = ""))) +
-    theme_bw(base_size=20) +
-    facet_wrap(~year)
+    theme_bw(base_size=20) 
+#    facet_wrap(~year)
 
 ggsave( file=paste0(graphsDir,'ggCubic.png'), plot=ggCubic, dpi=600 , width=6,height=6, units='in' )
 
@@ -386,18 +669,41 @@ ggsave( file=paste0(graphsDir,'ggCubic.png'), plot=ggCubic, dpi=600 , width=6,he
 ggCubic + geom_point(aes(maxX,maxY), data = pC$bY) +facet_wrap(~year)
 
 # max temp over years
-ggplot(pC$bY, aes(year,maxY)) + geom_point() + geom_smooth(method="lm")
+ggMaxTemp <- 
+ggplot(pC$bY, aes(year+1998,maxY)) +  
+  geom_point(size=3) +
+  geom_smooth(method="lm",color='black') +
+  scale_x_continuous('Year') +
+  scale_y_continuous( expression(paste("Temperature effect ( ",degree, "C)", sep = ""))) +
+  theme_bw(base_size=25) +
+  theme( legend.position="none")
+
+summary(lm( maxY ~ year, data=pC$bY ))
 
 # day of max temp over years
-ggplot(pC$bY, aes(year,maxX)) + geom_point() + geom_smooth(method="lm")
+ggDayOfMaxTemp <- 
+ggplot(pC$bY, aes(year+1998,maxX)) + 
+  geom_point(size=3) +
+  geom_smooth(method="lm",color='black') +
+  scale_x_continuous('Year') +
+  scale_y_continuous( expression(paste("Standardized day of year", sep = ""))) +
+  theme_bw(base_size=25) 
 
-# day of max temp over years
+summary(lm( maxX ~ year, data=pC$bY ))
+
+ggMaxTempMaxDay <- arrangeGrob(ggMaxTemp,ggDayOfMaxTemp, ncol=1)
+
+  ggsave( file=paste0(graphsDir,'ggMaxTempMaxDay.png'), plot=ggMaxTempMaxDay, dpi=600 , width=5,height=7, units='in', scale=2 )
+
+
+###########
+# look at predictions at specific std values of dOY
 bYM <- melt(pC$bY[,c('year','dOYMinus2','dOYMinus1','dOYPlus1','dOYPlus2')],id='year') 
 bYM$std <- ifelse(bYM$variable %in% c('dOYMinus1','dOYPlus1'), 1, 2 ) 
 bYM$tempAdj <- bYM$value + 18 # 18 for now as a fill-in
 
 predCubicStd <- 
-  ggplot(bYM, aes(year,tempAdj,linetype=variable,shape=variable)) +
+  ggplot(bYM, aes(year+1998,tempAdj,linetype=variable,shape=variable)) +
   geom_point(size=3) +
   geom_smooth(method="lm",color='black') +
   scale_x_continuous('Year') +
@@ -541,7 +847,7 @@ load( file = paste0(dataLocalDir,'crossValidationPropOut.RData'))
 ggplot(summ,aes(propOut,mean,color=keep)) + geom_point()
 
 cvPropOut <- 
-ggplot(filter(rmseByOutAllCV, propOut<0.99),aes(propOut,rmse,shape=keep)) + 
+ggplot(filter(rmseByOutAllCV, propOut<0.81),aes(propOut,rmse,shape=keep)) + 
   geom_point(size=3.5) +
   scale_x_continuous('Proportion of data left out') +
   scale_y_continuous('Root mean square error') +
@@ -550,8 +856,11 @@ ggplot(filter(rmseByOutAllCV, propOut<0.99),aes(propOut,rmse,shape=keep)) +
 
 ggsave( file=paste0(graphsDir,'cvPropOut.png'), plot=cvPropOut, dpi=600 , width=7,height=5, units='in', scale=2 )
 
+summary(lm(rmse~propOut,data=filter(rmseByOutAllCV, propOut<0.81,keep)))
 
-
+# means and sd of test data
+mean(filter(rmseByOutAllCV, propOut<0.81,!keep)$rmse)
+sd(filter(rmseByOutAllCV, propOut<0.81,!keep)$rmse)
 ```
 
 ```{r plots for cross-validation}
@@ -574,11 +883,15 @@ r %>%
              dOYDiff = min(dOYDiff),
              numD = mean( numD, na.rm=T ),
              numDSD = sd( numD, na.rm=T ),
-                  s = unique(s)) %>%
+                  s = unique(s),
+             meanMinDOY = mean( minDOY, na.rm=T ),
+             meanPropD = mean( propD, na.rm=T )) %>%
   filter( !is.na( s )
          # , s=='middle' 
          ) %>%
-  mutate( dOYDiff = ifelse( dOYDiff == -Inf,0, dOYDiff ) ) 
+  mutate( dOYDiff = ifelse( dOYDiff == -Inf,0, dOYDiff ),
+          lo = mean - sd,
+          hi = mean + sd) 
 
 
 ggplot( r[r$propD>0,] ,aes(numD,diff, color=rivsIndex
@@ -587,19 +900,23 @@ ggplot( r[r$propD>0,] ,aes(numD,diff, color=rivsIndex
   geom_point()+#aes(color=factor(s)) ) +
   facet_grid(scenario~riverOrdered)
 
+l <- lm(mean~meanPropD*factor(rivsIndex)+0, data=meansByS[meansByS$s=='middle',])
+#q <- lm(mean~numD*factor(rivsIndex)*I(numD^2)*factor(rivsIndex), data=meansByS[meansByS$s=='middle',])
+#AIC(l,q) # q is better
 
 ggRMSEDOY <- 
-ggplot( meansByS[meansByS$s=='middle',] ,aes(numD,mean
+ggplot( meansByS[meansByS$s=='middle',] ,aes(meanPropD,mean
                ,shape=factor(rivsIndex)
                )) +
   geom_point( size=4 ) +
+ # geom_errorbar( aes(numD,ymin=lo,ymax=hi)) +
   geom_smooth(method='lm'
-              , formula=y~x+I(x^2)
+              , formula=y~x #+ I(x^2)
               ,se=F,color='black') +
-  geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'earlyChunk',], shape=1,size=4 ) +
-  geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'lateChunk',], shape=5,size=3  ) +
-  scale_x_continuous('Number of days included in estimation') +
-  scale_y_continuous('Difference in RMSE from base case') +
+ # geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'earlyChunk',], shape=1,size=4 ) +
+#  geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'lateChunk',], shape=5,size=3  ) +
+  scale_x_continuous('Proportion of days included in estimation') +
+  scale_y_continuous('') +
   theme_bw(base_size=25) +
   theme(legend.position="none") 
 
@@ -635,6 +952,48 @@ for(i in 13:21){print(ggObsPred[[16+1*i]])}
 ```
 
 ```{r look at 30day patterns}
+# want to excude incomplete years - they skew the means
+meansByS2 <-   
+r %>%
+  filter( incompleteYear,numD > 20, rivsIndex==1 & riverOrdered=='WEST BROOK' | rivsIndex==2, year %in% c(1997:2007,2010,2011) ) %>%
+  group_by( rivsIndex,scenario ) %>%
+    summarise( mean = mean( diff, na.rm=T ),
+               sd   =   sd( diff, na.rm=T ),
+               n    =    n(  ),
+             dOYDiff = min(dOYDiff),
+             numD = mean( numD, na.rm=T ),
+             numDSD = sd( numD, na.rm=T ),
+                  s = unique(s),
+             meanMinDOY = mean( minDOY, na.rm=T )) %>%
+  filter( !is.na( s )
+         # , s=='middle' 
+         ) %>%
+  mutate( dOYDiff = ifelse( dOYDiff == -Inf,0, dOYDiff ),
+          lo = mean - sd,
+          hi = mean + sd) 
+
+ggRMSE30Days <- 
+ggplot( meansByS2[meansByS2$s=='30days' & meansByS2$meanMinDOY < 280 & meansByS2$meanMinDOY > 75,] ,aes(meanMinDOY,mean
+               ,shape=factor(rivsIndex)
+               )) +
+  geom_point( size=4 ) +
+ # geom_errorbar( aes(meanMinDOY,ymin=lo,ymax=hi)) +
+  geom_smooth(method='lm'
+              , formula=y~x #+ I(x^2)
+              ,se=F,color='black') +
+ # geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'earlyChunk',], shape=1,size=4 ) +
+#  geom_point( aes(dOYDiff,mean), data=meansByS[meansByS$s == 'lateChunk',], shape=5,size=3  ) +
+  scale_x_continuous('Starting day (day of year)') +
+  scale_y_continuous('') +
+  theme_bw(base_size=25) +
+  theme(legend.position="none") 
+
+ggsave( file=paste0(graphsDir,'ggRMSEDOY.png'), plot=ggRMSEDOY, dpi=600 , width=6,height=5, units='in', scale=2 )
+
+ggRMSEBoth <- arrangeGrob(ggRMSEDOY,ggRMSE30Days, left= textGrob("Difference in RMSE from base case", gp=gpar(fontsize=25),rot=90),ncol=1) #, widths=c(5,1.5))  
+
+ggsave( file=paste0(graphsDir,'ggRMSEBoth.png'), plot=ggRMSEBoth, dpi=600 , width=5,height=5, units='in', scale=2 )
+
 
 gg30DayScenarios <- 
 ggplot( na.omit(r[r$s %in% c('30days') 

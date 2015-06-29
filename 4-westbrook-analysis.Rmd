@@ -16,13 +16,14 @@ correlation of ar with other variables, airTemplagged1 correlated?
 ```{r results = 'hide', warning=FALSE, message=FALSE}
 library(knitr)
 library(rjags)
+library(reshape2)
 library(ggplot2)
 library(ggmcmc) # this uses plyr which conflicts with dplyr and makes group_by not work. make sure to load dplyr after this
 library(nlme)
 library(devtools)
 install_github("Conte-Ecology/conteStreamTemperature")
 library(conteStreamTemperature)
-library(beepr)
+#library(beepr)
 library(dplyr)
 ```
 
@@ -217,11 +218,12 @@ monitor.params <- c("residuals",
 
 coda.tf <- T # currently only works in full for TRUE (using coda.samples)
 
+tempDataSyncS$HUC8 <- NA #Dan changed the function - need this to make existing function work
 tempDataSyncS <- indexDeployments( data.frame(tempDataSyncS) )
 firstObsRows <- createFirstRows(tempDataSyncS)
 evalRows <- createEvalRows(tempDataSyncS)
 
-system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 100, n.it = 100, n.thin = 2, nc = 3, coda = coda.tf, param.list = monitor.params))
+system.time(M.wb <- modelRegionalTempWB(tempDataSyncS, firstObsRows, evalRows, data.fixed=data.fixed, data.random.years=data.random.years, n.burn = 1000, n.it = 5000, n.thin = 5, nc = 3, coda = coda.tf, param.list = monitor.params))
 
 save(M.wb, file = paste0(dataLocalDir, "westbrook-mcmc.RData"))
 
@@ -256,7 +258,6 @@ save(rmseBy,means,file=paste0(dataLocalDir,'means.RData'))
 save( tempDataSyncS,  file = paste0(dataLocalDir,'tempDataSyncSUsed.RData') )
 save( ggs.wb,  file = paste0(dataLocalDir,'ggs_wb.RData') )
 
-#beep()
 ```
 
 ## Evaluate MCMC Iterations
@@ -272,7 +273,12 @@ dev.off()
 ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]'),], family = "B.0")
 ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('B.0[14]','B.0[15]','B.0[16]','B.0[17]','B.0[18]','B.0[19]'),], family = "B.0")
 
+ggs_traceplot(ggs.wb[ggs.wb$Parameter %in% c('ar1[1]','ar1[2]','ar1[3]','ar1[4]','ar1Mean','ar1SD'),])
+
+# these graphs are the evidence for rHat < 1.01
 ggs_Rhat(ggs.wb, family = "B.0")
+ggs_Rhat(ggs.wb, family = "B.year")
+ggs_Rhat(ggs.wb, family = "ar1",scaling=1.1)
 
 
 ggs_density(ggs.wb, family = "B.0")
