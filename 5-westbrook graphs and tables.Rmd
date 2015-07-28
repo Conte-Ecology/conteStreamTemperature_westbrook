@@ -906,7 +906,7 @@ l <- lm(mean~meanPropD*factor(rivsIndex)+0, data=meansByS[meansByS$s=='middle',]
 
 ggRMSEDOY <- 
 ggplot( meansByS[meansByS$s=='middle',] ,aes(meanPropD,mean
-               ,shape=factor(rivsIndex)
+               ,shape=factor(rivsIndex), , linetype=factor(rivsIndex)
                )) +
   geom_point( size=4 ) +
  # geom_errorbar( aes(numD,ymin=lo,ymax=hi)) +
@@ -974,7 +974,7 @@ r %>%
 
 ggRMSE30Days <- 
 ggplot( meansByS2[meansByS2$s=='30days' & meansByS2$meanMinDOY < 280 & meansByS2$meanMinDOY > 75,] ,aes(meanMinDOY,mean
-               ,shape=factor(rivsIndex)
+               ,shape=factor(rivsIndex), linetype=factor(rivsIndex)
                )) +
   geom_point( size=4 ) +
  # geom_errorbar( aes(meanMinDOY,ymin=lo,ymax=hi)) +
