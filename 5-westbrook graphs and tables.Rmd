@@ -135,13 +135,13 @@ riverLabellerWB <- function(value){
     value[value=="WEST BROOK"] <- "WB"
     value[value=="WB JIMMY"] <- "OL"
     value[value=="WB MITCHELL"] <- "OS"
-    value[value=="WB OBEAR"] <- "I"
+    value[value=="WB OBEAR"] <- "IL"
   #}
   return(value)
 }
 
 tempDataSyncS$riverMS <- riverLabellerWB(tempDataSyncS$riverOrdered)
-tempDataSyncS$riverMS <- factor(tempDataSyncS$riverMS,levels=c("WB","OL","OS","I"), ordered=T)
+tempDataSyncS$riverMS <- factor(tempDataSyncS$riverMS,levels=c("WB","OL","OS","IL"), ordered=T)
 
 
 
@@ -263,12 +263,13 @@ gSum <-
           wOrA = 'Water')
 
 ggCResids <- 
-  ggplot(gSum, aes(dOY,cR,color=cR)) + geom_point() + geom_hline(yintercept=0) + 
+  ggplot(gSum, aes(dOY*64.9+196.9,cR,color=cR)) + geom_point() + geom_hline(yintercept=0) + 
     scale_color_gradient2(low='blue', high = 'red',mid='darkgrey') +
     scale_y_continuous( expression(paste("Cumulative residuals ( ",degree, "C)", sep = ""))) +
-    scale_x_continuous("Standardized day of year") +
+    scale_x_continuous("Day of year",breaks=seq(100, 300,100)) +
     theme_bw(base_size=18) +
     theme(legend.position="none") +
+      theme(axis.text.x = element_text(size=12,angle=90,vjust=0.5))+
     facet_grid(s~y)
 
 ggsave( file=paste0(graphsDir,'ggCResids.png'), plot=ggCResids, dpi=600 , width=6,height=5, units='in', scale=2 )
@@ -650,15 +651,15 @@ ggsave( file=paste0(graphsDir,'ggBP2.png'), plot=ggBP2, dpi=600, width=5,height=
 
 
 ```{r predictions of cubic by year}
-
+library(reshape2)
 pC <- predCubic(means)
 
 ggCubic <- 
-  ggplot(pC$predCubic, aes(dOY,pred, group=year)) + 
+  ggplot(pC$predCubic, aes(dOY*64.9+196.9,pred + 15.09, group=year)) + 
     geom_line(size=1.25) +
-    geom_point(aes(maxX,maxY), color='white',data = pC$bY) +
+    geom_point(aes(maxX*64.9+196.9,maxY + 15.09), color='white',data = pC$bY) +
     scale_x_continuous('Day of year') +
-    scale_y_continuous( expression(paste("Cubic trend effect ( ",degree, "C)", sep = ""))) +
+    scale_y_continuous( expression(paste("Temperature ( ",degree, "C)", sep = ""))) +
     theme_bw(base_size=20) 
 #    facet_wrap(~year)
 
@@ -670,11 +671,11 @@ ggCubic + geom_point(aes(maxX,maxY), data = pC$bY) +facet_wrap(~year)
 
 # max temp over years
 ggMaxTemp <- 
-ggplot(pC$bY, aes(year+1998,maxY)) +  
+ggplot(pC$bY, aes(year+1998,maxY + 15.09)) +  
   geom_point(size=3) +
   geom_smooth(method="lm",color='black') +
   scale_x_continuous('Year') +
-  scale_y_continuous( expression(paste("Temperature effect ( ",degree, "C)", sep = ""))) +
+  scale_y_continuous( expression(paste("Temperature ( ",degree, "C)", sep = ""))) +
   theme_bw(base_size=25) +
   theme( legend.position="none")
 
@@ -682,11 +683,11 @@ summary(lm( maxY ~ year, data=pC$bY ))
 
 # day of max temp over years
 ggDayOfMaxTemp <- 
-ggplot(pC$bY, aes(year+1998,maxX)) + 
+ggplot(pC$bY, aes(year+1998,maxX*64.9+196.9)) + 
   geom_point(size=3) +
   geom_smooth(method="lm",color='black') +
   scale_x_continuous('Year') +
-  scale_y_continuous( expression(paste("Standardized day of year", sep = ""))) +
+  scale_y_continuous( expression(paste("Day of year", sep = ""))) +
   theme_bw(base_size=25) 
 
 summary(lm( maxX ~ year, data=pC$bY ))
@@ -903,6 +904,13 @@ ggplot( r[r$propD>0,] ,aes(numD,diff, color=rivsIndex
 l <- lm(mean~meanPropD*factor(rivsIndex)+0, data=meansByS[meansByS$s=='middle',])
 #q <- lm(mean~numD*factor(rivsIndex)*I(numD^2)*factor(rivsIndex), data=meansByS[meansByS$s=='middle',])
 #AIC(l,q) # q is better
+
+#just all left out
+summary(lm(mean~meanPropD, data=meansByS[meansByS$s=='middle' & meansByS$rivsIndex == 1,])) 
+
+#just WB left out
+summary(lm(mean~meanPropD, data=meansByS[meansByS$s=='middle' & meansByS$rivsIndex == 2,]))
+
 
 ggRMSEDOY <- 
 ggplot( meansByS[meansByS$s=='middle',] ,aes(meanPropD,mean
