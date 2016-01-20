@@ -20,12 +20,16 @@ dbUnloadDriver(drv=drv)
 str(df)
 summary(df)
 
-df_covs <- df %>%
+df_upstream <- df %>%
   dplyr::filter(zone == "upstream") %>%
   tidyr::spread(variable, value) %>%
   dplyr::mutate(impoundAreaSqKM = AreaSqKM * allonnet / 100) %>%
-  dplyr::select(featureid, zone, AreaSqKM, allonnet, impoundAreaSqKM, elevation, slope_pcnt, forest, developed, agriculture) # convert from long to wide by variable
-summary(df_covs)
+  dplyr::select(featureid, AreaSqKM, allonnet, impoundAreaSqKM, forest, developed, agriculture)
+
+df_local <- df %>%
+  dplyr::filter(zone == "local") %>%
+  tidyr::spread(variable, value) %>%
+  dplyr::select(featureid, elevation, slope_pcnt)
 
 df_id <- data.frame(featureid = c(834183, 833880, 833923, 834122),
                     name = c("OBear", "Jimmy", "Mitchell", "West Brook"),
@@ -33,7 +37,8 @@ df_id <- data.frame(featureid = c(834183, 833880, 833923, 834122),
                     stringsAsFactors = FALSE)
 
 df_full <- df_id %>%
-  dplyr::left_join(df_covs)
+  dplyr::left_join(df_upstream) %>%
+  dplyr::left_join(df_local)
 
 df_full
 
