@@ -149,12 +149,13 @@ tempDataSyncS$riverMS <- factor(tempDataSyncS$riverMS,levels=c("WB","OL","OS","I
 ggV <- list()
 for(r in unique(tempDataSyncS$riverMS)){
   ggV[[r]] <- 
-    
-   ggplot(tempDataSyncS[tempDataSyncS$riverMS==r & tempDataSyncS$nMonthRiverYear >= 20 & tempDataSyncS$year >=2003,], aes((month),temp)) + 
+
+# adding in '.x' to the variables just to get the figure done for resubmission    
+   ggplot(tempDataSyncS[tempDataSyncS$riverMS==r & tempDataSyncS$nMonthRiverYear.x >= 20 & tempDataSyncS$year >=2003,], aes((month),temp)) + 
     geom_violin() + 
-    geom_point(aes((month),meanByMonth),shape=16,size=2) +
-    geom_point(aes((month),meanByMonthRiver),shape=1,size=3) +
-    geom_point(aes((month),meanByMonthRiverYear),shape=95,size=5) +
+    geom_point(aes((month),meanByMonth.x),shape=16,size=2) +
+    geom_point(aes((month),meanByMonthRiver.x),shape=1,size=3) +
+    geom_point(aes((month),meanByMonthRiverYear.x),shape=95,size=5) +
     scale_x_discrete('Month') +
     scale_y_continuous("Temperature (C)") +
     theme_bw(base_size=10)+
@@ -216,6 +217,12 @@ ggsave( file=paste0(graphsDir,'rawWB.png'), plot=rawWB, dpi=600 , width=6,height
 
 ```
 
+```{r}
+# to calculate by hand the proportion of missing data for each site/year combo
+springFallBPs$numSyncDays <- springFallBPs$finalFallBP - springFallBPs$finalSpringBP
+
+```
+
 ```{r correlations among streams}
 
 forCorr <- tempDataSyncS %>%
@@ -240,18 +247,23 @@ ggplot(forCorr, aes(OL,I)) +
 ```{r characterize years - hot, cold seasons}
 ggplot(tempDataSyncS, aes(dOY,temp)) + geom_point() + facet_grid(year~riverOrdered)
 
+gGam <- gam(temp~s(dOY),data=tempDataSyncS)
+g <- data.frame(s=tempDataSyncS$riverMS,y=tempDataSyncS$year,dOY=tempDataSyncS$dOY,t=tempDataSyncS$temp,r=gGam$residuals,f=gGam$fitted.values)
+
+#ggplot(g, aes(dOY,r)) +geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
+
 ggGam <- 
-ggplot(tempDataSyncS,aes(dOYInt,temp)) + geom_point() +geom_smooth(se=F,color='white',size=2.5) +
+ggplot(tempDataSyncS,aes(dOYInt,temp)) + 
+  geom_point() +
+#  geom_smooth(se=F,color='white',size=2.5) +
   scale_x_continuous("Day of Year") +
   scale_y_continuous("Temperature (C)") +
+  geom_line(aes(dOY*64.9+196.9,f),size=2.0,color="white",data=g)+
   theme_bw(base_size=25)
 
 ggsave( file=paste0(graphsDir,'ggGam.png'), plot=ggGam, dpi=600 , width=6,height=5, units='in', scale=2 )
 
 
-gGam <- gam(temp~s(dOY),data=tempDataSyncS)
-g <- data.frame(s=tempDataSyncS$riverMS,y=tempDataSyncS$year,dOY=tempDataSyncS$dOY,t=tempDataSyncS$temp,r=gGam$residuals,f=gGam$fitted.values)
-#ggplot(g, aes(dOY,r)) +geom_point() + geom_hline(yintercept=0) + facet_grid(y~s)
 
 gSum <- 
   g %>%
@@ -265,11 +277,12 @@ gSum <-
 ggCResids <- 
   ggplot(gSum, aes(dOY*64.9+196.9,cR,color=cR)) + geom_point() + geom_hline(yintercept=0) + 
     scale_color_gradient2(low='blue', high = 'red',mid='darkgrey') +
-    scale_y_continuous( expression(paste("Cumulative residuals ( ",degree, "C)", sep = ""))) +
+ #   scale_y_continuous( expression(paste("Cumulative residuals ( ",degree, "C)", sep = ""))) +
+    scale_y_continuous("Cumulative residuals (C)") +
     scale_x_continuous("Day of year",breaks=seq(100, 300,100)) +
     theme_bw(base_size=18) +
     theme(legend.position="none") +
-      theme(axis.text.x = element_text(size=12,angle=90,vjust=0.5))+
+    theme(axis.text.x = element_text(size=12,angle=90,vjust=0.5))+
     facet_grid(s~y)
 
 ggsave( file=paste0(graphsDir,'ggCResids.png'), plot=ggCResids, dpi=600 , width=6,height=5, units='in', scale=2 )
@@ -530,7 +543,7 @@ keepRows <-
                    grep("rho.B.year",x=ggs.wb$Parameter,invert=TRUE)
                   )
 
-rHat <- unique( ggs_rhat_temp(ggs.wb[keepRows,], ggs.wb)$data ) # ggs_rhat has problems because using keepRows strips the attributes
+rHat <- unique( ggs_rhat_temp(ggs.wb[keepRows,], ggs.wb)$data ) # ggs_rhat has problems because using keepRows strips the attributes. function s is saved in wd()/code
 rHat$Rhat1 <- ifelse(rHat$Rhat < 1,1,rHat$Rhat)
 max(rHat$Rhat1,na.rm=T)
 
@@ -544,13 +557,17 @@ m$oP <- factor(m$Parameter,levels=rev( c(
  'B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]','B.0[7]','B.0[8]','B.0[9]','B.0[10]','B.0[11]','B.0[12]','mu.year[1]','mu.year[2]','mu.year[3]','mu.year[4]','ar1Mean','ar1SD','ar1[1]','ar1[2]','ar1[3]','ar1[4]','mu.year[1]','mu.year[2]','mu.year[3]','mu.year[4]','sigma'
  ) ), ordered=T)
 
+#m$oP <- 
+#plyr::mapvalues(m$oP, from = c('B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]','B.0[7]','B.0[8]','B.0[9]','B.0[10]','B.0[11]','B.0[12]'), to = c('B[0]','B[1]','B[2]','B[3]','B[4]','B[5]','B[6]','B[7]','B[8]','B[9]','B[10]','B[11]'))
+
 m$oP <- 
-plyr::mapvalues(m$oP, from = c('B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]','B.0[7]','B.0[8]','B.0[9]','B.0[10]','B.0[11]','B.0[12]'), to = c('B[0]','B[1]','B[2]','B[3]','B[4]','B[5]','B[6]','B[7]','B[8]','B[9]','B[10]','B[11]'))
+plyr::mapvalues(m$oP, from = c('B.0[1]','B.0[2]','B.0[3]','B.0[4]','B.0[5]','B.0[6]','B.0[7]','B.0[8]','B.0[9]','B.0[10]','B.0[11]','B.0[12]','ar1[1]','ar1[2]','ar1[3]','ar1[4]','mu.year[1]','mu.year[2]','mu.year[3]','mu.year[4]'), to = c('Intercept','T','T(d-1)','T(d-2)','F','T * F','OL','OS','IS','OL * T','OS * T','IS * T','ar1[WB]','ar1[OL]','ar1[OS]','ar1[IL]','0','Linear','Quadratic','Cubic'))
+
 
 # without B.year[]
 # do in two parts to simulate a 'break'
 b1 <- 
-ggplot(m[grep("B.year",m$Parameter,invert=T) & !is.na(m$oP),], aes(x = mean, y = oP)) + 
+ggplot(m[grep("B.year",m$Parameter,invert=T) & !is.na(m$oP) & m$oP!="0",], aes(x = mean, y = oP)) + 
   geom_point(size = 3) + 
   geom_segment(aes(x = qLo, xend = qHi, yend = oP), size = 0.5) +
   geom_segment(aes(x = qLo25, xend = qHi75, yend = oP), size = 1.5) +
@@ -565,7 +582,7 @@ ggplot(m[grep("B.year",m$Parameter,invert=T) & !is.na(m$oP),], aes(x = mean, y =
         plot.margin= unit(c(1,0.05,1,1), "lines"))
  
 b2 <- 
-ggplot(m[grep("B.year",m$Parameter,invert=T) & !is.na(m$oP),], aes(x = mean, y = oP)) + 
+ggplot(m[grep("B.year",m$Parameter,invert=T) & !is.na(m$oP)& m$oP!="0",], aes(x = mean, y = oP)) + 
   geom_point(size = 3) + 
   geom_segment(aes(x = qLo, xend = qHi, yend = oP), size = 0.5) +
   geom_segment(aes(x = qLo25, xend = qHi75, yend = oP), size = 1.5) +
@@ -582,7 +599,7 @@ ggplot(m[grep("B.year",m$Parameter,invert=T) & !is.na(m$oP),], aes(x = mean, y =
 
 betas <- arrangeGrob(b1, b2,ncol=2, widths=c(5,1.5))  
 
-ggsave( file=paste0(graphsDir,'betas.png'), plot=betas, dpi=600, width=5,height=5, units='in', scale=2 )
+ggsave( file=paste0(graphsDir,'betas2.png'), plot=betas, dpi=600, width=5,height=5, units='in', scale=2 )
 
 data.frame(m) #paste into excel to get ready for appendix table
 
