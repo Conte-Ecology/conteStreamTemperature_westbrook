@@ -177,6 +177,13 @@ ggViolin <- arrangeGrob(ggV[[4]],ggV[[1]],ggV[[2]],ggV[[3]], ncol=2)#, widths=c(
 ggplot(e, aes(dOY,temp)) + geom_line(aes(color=factor(year))) + coord_polar() + facet_wrap(~river)
 
 ###
+
+labels1 <- data.frame(
+  dOY = c(345,345),
+  temp = c(24, 24),
+  text = c("a", "b"),
+  year = c(2003,2004))
+
 ggRawWB <- 
 ggplot(e[e$riverOrdered == 'WEST BROOK' & e$year %in% 2003:2004,],aes(dOY,temp))+
   geom_line(size=0.5)+
@@ -189,10 +196,16 @@ ggplot(e[e$riverOrdered == 'WEST BROOK' & e$year %in% 2003:2004,],aes(dOY,temp))
   theme_bw(base_size=25)+
   theme(axis.title.x = element_blank(),
         axis.text.x = element_blank()) +
+  geom_text(aes(label=text),size=10,data=labels1)+
   facet_wrap(~year)
 
 ggsave( file=paste0(graphsDir,'ggRawWB.png'), plot=ggRawWB, dpi=600 , width=6,height=5, units='in', scale=2 )
 
+labels2 <- data.frame(
+  dOY = c(345,345),
+  movingMean = c(24, 24),
+  text = c("c", "d"),
+  year = c(2003,2004))
 
 ggWBBPs <- 
 ggplot(e[e$riverOrdered == 'WEST BROOK' & e$year %in% 2003:2004,],aes(dOY,movingMean))+
@@ -208,6 +221,7 @@ ggplot(e[e$riverOrdered == 'WEST BROOK' & e$year %in% 2003:2004,],aes(dOY,moving
   theme(strip.text.x = element_blank(),
         strip.background = element_blank()) +
   #ylim(-5,30) +
+  geom_text(aes(label=text),size=10,data=labels2)+
   facet_wrap(~year)
 
 rawWB <- arrangeGrob(ggRawWB, ggWBBPs,ncol=1)#, widths=c(5,1.5))  
