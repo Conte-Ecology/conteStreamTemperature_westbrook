@@ -1,4 +1,4 @@
-conteStreamTemperature_westbrook
+Stream temperature model for the West Brook and tributaries
 ================================
 
 Model of daily stream temperature for the West Brook and its tributaries. Results are reported here: https://peerj.com/articles/1727/
