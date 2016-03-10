@@ -1,6 +1,6 @@
 .Rproj.user
 .Rhistory
 *.RData
-!localData/tempDataSyncSUsed.RData
 localData/*
+!localData/tempDataSyncSUsed.RData
 *.pdf
